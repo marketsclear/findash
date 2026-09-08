@@ -1,69 +1,97 @@
-import Image from "next/image";
+import { ChartsSection } from "@/components/ChartsSection";
+import { ExchangeCard } from "@/components/ExchangeCard";
+import { RatioCard } from "@/components/RatioCard";
+import { RefreshButton } from "@/components/RefreshButton";
+import { getDashboardData } from "@/lib/dashboard";
+import { fmtDay, fmtShare, fmtTime, fmtUsd } from "@/lib/format";
 
-export default function Home() {
+export const dynamic = "force-dynamic";
+
+const COLORS: Record<string, string> = { hyperliquid: "var(--series-1)", lighter: "var(--series-2)" };
+
+export default async function Page() {
+  const data = await getDashboardData();
+  const oldest = data.exchanges.map((e) => e.updatedAt).filter(Boolean).sort()[0] ?? null;
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
+      <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold">Perp DEX monitor</h1>
+          <p className="mt-1 text-sm text-ink-2">
+            Hyperliquid and Lighter · volume and revenue · windows end {fmtDay(data.asOf, { year: true })} (last complete UTC day)
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+        <div className="flex flex-col items-end gap-1">
+          {data.refreshMode === "inprocess" ? (
+            <RefreshButton initial={{ running: data.refresh.running, log: data.refresh.log, error: data.refresh.error }} />
+          ) : (
+            <span className="text-sm text-ink-2">Refreshed on a schedule</span>
+          )}
+          <span className="text-xs text-muted">Data updated {fmtTime(oldest)}</span>
         </div>
-      </main>
-    </div>
+      </header>
+
+      {!data.hasData && (
+        <p className="mb-6 rounded-md border border-border bg-surface px-4 py-3 text-sm text-ink-2">
+          First load: collecting history from the exchange APIs. This takes a few minutes; the page refreshes itself when done.
+        </p>
+      )}
+
+      <section className="mb-4 flex flex-wrap items-center gap-x-8 gap-y-2 rounded-lg border border-border bg-surface px-5 py-4">
+        <div>
+          <div className="text-xs uppercase tracking-wide text-muted">LIT FDV as % of HYPE FDV</div>
+          <div className="mt-1 text-5xl font-semibold leading-none text-ink">{data.valuation ? fmtShare(data.valuation.fdvPct) : "–"}</div>
+        </div>
+        {data.valuation ? (
+          <dl className="grid grid-cols-[auto_auto] gap-x-4 gap-y-0.5 text-sm text-ink-2">
+            <dt>Fully diluted</dt>
+            <dd className="tabular-nums">
+              LIT {fmtUsd(data.valuation.lit.fdv)} / HYPE {fmtUsd(data.valuation.hype.fdv)}
+            </dd>
+            <dt>Circulating market cap</dt>
+            <dd className="tabular-nums">
+              <span className="font-semibold text-ink">{fmtShare(data.valuation.marketCapPct)}</span> · LIT {fmtUsd(data.valuation.lit.marketCap)} / HYPE{" "}
+              {fmtUsd(data.valuation.hype.marketCap)}
+            </dd>
+            <dt>Prices</dt>
+            <dd className="tabular-nums">
+              LIT ${data.valuation.lit.price.toFixed(2)} · HYPE ${data.valuation.hype.price.toFixed(2)} · CoinGecko, {fmtTime(data.valuation.hype.updatedAt)}
+            </dd>
+          </dl>
+        ) : (
+          <span className="text-sm text-muted">Token prices unavailable (CoinGecko lookup failed)</span>
+        )}
+      </section>
+
+      <div className="mb-8 grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+        {data.exchanges.map((ex) => (
+          <ExchangeCard key={ex.id} ex={ex} windows={data.windows} color={COLORS[ex.id]} />
+        ))}
+        <RatioCard ratio={data.ratio} windows={data.windows} />
+      </div>
+
+      <ChartsSection
+        asOf={data.asOf}
+        ratio={{ volume: data.ratio.volume.points, revenue: data.ratio.revenue.points }}
+        exchanges={data.exchanges.map((e) => ({ id: e.id, name: e.name, color: COLORS[e.id], volume: e.volume.points, revenue: e.revenue.points }))}
+      />
+
+      <footer className="mt-8 space-y-1 text-xs text-muted">
+        <p>
+          Volume: Hyperliquid perps (incl. HIP-3 builder markets) from the Hyperliquid candle API, spot from DefiLlama; Lighter perps, spot and the Robinhood
+          deployment from the Lighter candle API. Live 24h is the exchanges&apos; own rolling figure. Volume is single-sided notional (it matches
+          Hyperliquid&apos;s own 24h figure); Hyperliquid&apos;s stats site counts both sides of each trade and therefore shows about twice these numbers.
+        </p>
+        <p>
+          Revenue: DefiLlama protocol revenue. Hyperliquid = fee share routed to the Assistance Fund (excludes builder and HIP-3 deployer fees). Lighter =
+          maker/taker/transfer/withdraw fees kept by the protocol (excludes liquidation fees paid to the LLP).
+        </p>
+        <p>
+          Valuations: CoinGecko. FDV uses each token&apos;s total supply (HYPE ~955M of a 1B max, LIT 1B); circulating market cap uses circulating supply.
+        </p>
+        <p>Deltas compare each window with the preceding window of equal length; YTD compares with the same dates last year. Amounts in USD.</p>
+      </footer>
+    </main>
   );
 }
