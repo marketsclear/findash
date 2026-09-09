@@ -20,9 +20,21 @@ export interface FundFlow {
   shares?: number;
   eth?: number;
   aum?: number;
+  /** True when the value comes from the fund's secondary seed rather than issuer data. */
+  seeded?: boolean;
 }
 
 export function fundFlows(fund: EtfFundStore): FundFlow[] {
+  const derived = derivedFlows(fund);
+  if (!fund.seed) return derived;
+  const firstPrimary = derived[0]?.date;
+  const seeded: FundFlow[] = Object.entries(fund.seed.flows)
+    .filter(([d]) => !firstPrimary || d < firstPrimary)
+    .map(([date, usd]) => ({ date, usd, from: date, seeded: true }));
+  return [...seeded, ...derived].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function derivedFlows(fund: EtfFundStore): FundFlow[] {
   const days = Object.keys(fund.days).sort();
   const out: FundFlow[] = [];
   let prev: FundSnapshot | null = null;
@@ -46,30 +58,32 @@ export function fundFlows(fund: EtfFundStore): FundFlow[] {
 export interface EtfFlowTable {
   tickers: string[];
   /** Trading days, newest first. */
-  rows: { date: Day; byFund: Record<string, number | null>; total: number; reporting: number }[];
+  rows: { date: Day; byFund: Record<string, number | null>; seeded: Record<string, boolean>; total: number; reporting: number }[];
 }
 
 export function flowTable(store: EtfStore, tickers: string[], days: number): EtfFlowTable {
-  const perFund: Record<string, Map<Day, number>> = {};
+  const perFund: Record<string, Map<Day, FundFlow>> = {};
   const dates = new Set<Day>();
   for (const t of tickers) {
     const fund = store.funds[t];
     perFund[t] = new Map();
     if (!fund) continue;
     for (const f of fundFlows(fund)) {
-      perFund[t].set(f.date, f.usd);
+      perFund[t].set(f.date, f);
       dates.add(f.date);
     }
   }
   const rows = [...dates].sort().reverse().slice(0, days).map((date) => {
     const byFund: Record<string, number | null> = {};
+    const seeded: Record<string, boolean> = {};
     let total = 0, reporting = 0;
     for (const t of tickers) {
-      const v = perFund[t].get(date);
-      byFund[t] = v ?? null;
-      if (v !== undefined) { total += v; reporting++; }
+      const f = perFund[t].get(date);
+      byFund[t] = f ? f.usd : null;
+      seeded[t] = !!f?.seeded;
+      if (f) { total += f.usd; reporting++; }
     }
-    return { date, byFund, total, reporting };
+    return { date, byFund, seeded, total, reporting };
   });
   return { tickers, rows };
 }

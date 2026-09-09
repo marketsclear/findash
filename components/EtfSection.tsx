@@ -2,11 +2,15 @@ import type { EtfData } from "@/lib/dashboard";
 import { fmtDay, fmtRange, fmtSigned, fmtTime, fmtUsd } from "@/lib/format";
 import { BarChart } from "./BarChart";
 
-function Flow({ v, compact }: { v: number | null; compact?: boolean }) {
+function Flow({ v, compact, seeded }: { v: number | null; compact?: boolean; seeded?: boolean }) {
   if (v === null) return <span className="text-muted">–</span>;
   const cls = v > 0 ? "text-good" : v < 0 ? "text-bad" : "text-ink-2";
   const digits = compact ? 1 : undefined;
-  return <span className={`${cls} tabular-nums`}>{v === 0 ? "0.0" : `${v > 0 ? "+" : "−"}${(Math.abs(v) / 1e6).toFixed(digits ?? 1)}`}</span>;
+  return (
+    <span className={`${cls} tabular-nums ${seeded ? "italic opacity-80" : ""}`} title={seeded ? "Seeded from Farside (secondary source); issuer data starts later" : undefined}>
+      {v === 0 ? "0.0" : `${v > 0 ? "+" : "−"}${(Math.abs(v) / 1e6).toFixed(digits ?? 1)}`}
+    </span>
+  );
 }
 
 export function EtfSection({ etf }: { etf: EtfData }) {
@@ -51,7 +55,7 @@ export function EtfSection({ etf }: { etf: EtfData }) {
               <tr key={r.date} className="border-t border-grid">
                 <td className="whitespace-nowrap px-3 py-1.5 text-ink-2">{fmtDay(r.date, { year: true })}</td>
                 {tickers.map((t) => (
-                  <td key={t} className="px-2 py-1.5 text-right"><Flow v={r.byFund[t]} compact /></td>
+                  <td key={t} className="px-2 py-1.5 text-right"><Flow v={r.byFund[t]} compact seeded={r.seeded[t]} /></td>
                 ))}
                 <td className="px-3 py-1.5 text-right font-semibold" title={r.reporting < tickers.length ? `${r.reporting} of ${tickers.length} funds reported` : undefined}>
                   <Flow v={r.total} compact />{r.reporting < tickers.length && <span className="text-muted">*</span>}
@@ -64,7 +68,7 @@ export function EtfSection({ etf }: { etf: EtfData }) {
           </tbody>
         </table>
         <div className="border-t border-grid px-3 py-2 text-xs text-muted">
-          USD millions. * Total excludes funds without data for that day. Latest holdings:{" "}
+          USD millions. * Total excludes funds without data for that day. <em>Italic</em> = seeded from Farside for days before the issuer feed starts. Latest holdings:{" "}
           {tickers.map((t) => {
             const s = funds[t]?.latest;
             const err = funds[t]?.lastError;

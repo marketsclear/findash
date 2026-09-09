@@ -12,6 +12,8 @@ export interface EtfFundStore {
   sharesLag: 0 | 1;
   lagUnverified?: boolean;
   days: Record<Day, FundSnapshot>;
+  /** Flows from a secondary source, used only for days before the first issuer-derived flow. */
+  seed?: { source: string; capturedAt: string; flows: Record<Day, number> };
   lastOk?: string;
   lastError?: string;
 }
@@ -27,7 +29,7 @@ export async function collectEtf(existing: EtfStore | null, log: (msg: string) =
   try {
     for (const a of ADAPTERS) {
       const prev = funds[a.ticker];
-      const fund: EtfFundStore = { name: a.name, issuer: a.issuer, method: a.method, history: a.history, sharesLag: a.sharesLag, lagUnverified: a.lagUnverified, days: { ...(prev?.days ?? {}) }, lastOk: prev?.lastOk, lastError: prev?.lastError };
+      const fund: EtfFundStore = { name: a.name, issuer: a.issuer, method: a.method, history: a.history, sharesLag: a.sharesLag, lagUnverified: a.lagUnverified, days: { ...(prev?.days ?? {}) }, seed: prev?.seed, lastOk: prev?.lastOk, lastError: prev?.lastError };
       try {
         const snaps = await a.fetch();
         for (const s of snaps) fund.days[s.date] = { ...(fund.days[s.date] ?? {}), ...stripUndefined(s) };

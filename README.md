@@ -42,6 +42,14 @@ Fidelity and Invesco sit behind Akamai bot management, which scores the TLS hand
 (Python, `curl_cffi`) performs those requests with a Chrome fingerprint and a shared cookie jar. Franklin's page is
 read with headless Chromium (Playwright).
 
+For the five funds without issuer history (FETH, ETHW, ETHV, QETH, EZET) the days before the first
+issuer-derived flow are seeded once from Farside's all-data table (secondary source, captured
+2026-09-09). Seeded cells are italic in the UI and flagged `seeded` in the flow data; issuer data takes
+precedence as soon as it exists. To refresh the seed: with `pnpm dev` running, open
+`farside.co.uk/ethereum-etf-flow-all-data/` in a browser, extract the table and navigate the tab to
+`/api/seed/farside?part=N&d=<json>` in chunks (the site's CSP blocks fetch), then run
+`pnpm tsx scripts/etf-seed-farside.ts` (and again with `DATABASE_URL` for production).
+
 Collection runs from `.github/workflows/etf.yml` after US close (03:30 UTC) with a second pass at
 13:00 UTC, or locally with `pnpm collect:etf`. A failing issuer keeps its previous rows and shows a
 "!" marker in the section footer. The share-count lag for issuers without history is an assumption
