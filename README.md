@@ -36,6 +36,7 @@ price). Windows sum the total over calendar periods ending on the latest reporte
 | ETHW | Bitwise | fund page (server-rendered) | from first collection |
 | ETHV | VanEck | holdings dataset JSON behind the fund page (needs the cookie-consent cookie) | from first collection |
 | EZET | Franklin Templeton | fund page rendered in headless Chromium | from first collection |
+| MSSE | Morgan Stanley | product-page JSON (pricing + trade-date holdings), fetched with a Chrome TLS fingerprint; listed 28 Jul 2026, not on Farside | from first collection |
 | FETH | Fidelity | institutional research quote API (page → CSRF token → quote), fetched with a Chrome TLS fingerprint | from first collection |
 
 Fidelity and Invesco sit behind Akamai bot management, which scores the TLS handshake; `scripts/impersonate_fetch.py`

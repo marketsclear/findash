@@ -98,7 +98,7 @@ export default async function Page() {
         <p>
           ETF flows: change in shares outstanding × NAV per issuer-reported day (VanEck: change in ether held × implied price). Sources: iShares fund
           download, Grayscale product-performance workbooks, 21Shares API, Invesco product API, Bitwise and Franklin fund pages, VanEck holdings dataset,
-          Fidelity institutional quote. History since launch for ETHA, ETHB, ETHE, ETH and TETH; the others accumulate from the first collection.
+          Fidelity institutional quote, Morgan Stanley product JSON. History since launch for ETHA, ETHB, ETHE, ETH and TETH; the others accumulate from the first collection.
         </p>
         <p>Deltas compare each window with the preceding window of equal length; YTD compares with the same dates last year. Amounts in USD.</p>
       </footer>

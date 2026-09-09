@@ -69,7 +69,7 @@ export interface EtfData {
   updatedAt: string | null;
 }
 
-export const ETF_TICKERS = ["ETHA", "ETHB", "FETH", "ETHW", "TETH", "ETHV", "QETH", "EZET", "ETHE", "ETH"];
+export const ETF_TICKERS = ["ETHA", "ETHB", "FETH", "ETHW", "TETH", "ETHV", "QETH", "EZET", "ETHE", "ETH", "MSSE"];
 
 export function buildEtfData(store: EtfStore | null): EtfData {
   const empty: EtfStore = { updatedAt: "", funds: {} };
