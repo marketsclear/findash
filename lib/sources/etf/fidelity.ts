@@ -2,8 +2,11 @@ import { impersonateFetch } from "./impersonate";
 import { FundAdapter, num, toDay } from "./types";
 
 /**
- * Fidelity Ethereum Fund (FETH). The institutional research page's quote API returns the exact share
- * count (short.freeFloatShares), previous-day NAV and ether held. Akamai in front of it rejects
+ * Fidelity Ethereum Fund (FETH). The institutional research page's quote API returns a share count
+ * (short.freeFloatShares), previous-day NAV and ether held with ether per share. The share count is a
+ * vendor figure that lags creations by days, while ether held is dated to the trade day and matched
+ * Farside's flow to the cent on 8 Sep 2026, so flows use the change in ether held. Ether held is
+ * published one NAV date behind the NAV, so the two land in separate snapshots. Akamai in front rejects
  * non-browser TLS fingerprints, and the API also requires the app's CSRF token as a header, so the
  * sequence (page → tokens → quote) runs through the impersonating helper with a shared cookie jar.
  */
@@ -11,7 +14,7 @@ interface Quote {
   quoteData?: {
     short?: { freeFloatShares?: string };
     navPreviousDay?: { value?: number; asOfDate?: string };
-    cryptoDetails?: { totalUnitPerCoin?: number; asOfDate?: string };
+    cryptoDetails?: { totalUnitPerCoin?: number; unitPerShare?: number; asOfDate?: string };
   };
 }
 
@@ -22,10 +25,9 @@ export const feth: FundAdapter = {
   ticker: "FETH",
   name: "Fidelity Ethereum Fund",
   issuer: "Fidelity",
-  method: "shares",
+  method: "eth",
   history: false,
-  sharesLag: 1,
-  lagUnverified: true,
+  sharesLag: 0,
   async fetch() {
     const [, tokens, quote] = await impersonateFetch([
       { url: PAGE },
@@ -51,8 +53,14 @@ export const feth: FundAdapter = {
     const nav = q.navPreviousDay?.value;
     const date = q.navPreviousDay?.asOfDate ? toDay(q.navPreviousDay.asOfDate) : undefined;
     if (!date || shares === undefined || nav === undefined) throw new Error(`FETH: incomplete quote ${JSON.stringify(q).slice(0, 200)}`);
+    const out = [{ date, shares, nav, aum: nav * shares }];
     const ethDate = q.cryptoDetails?.asOfDate ? toDay(q.cryptoDetails.asOfDate) : undefined;
-    const eth = ethDate === date ? q.cryptoDetails?.totalUnitPerCoin : undefined;
-    return [{ date, shares, nav, aum: nav * shares, eth }];
+    const eth = q.cryptoDetails?.totalUnitPerCoin;
+    const ethPerShare = q.cryptoDetails?.unitPerShare;
+    if (ethDate && eth) {
+      if (ethDate === date) Object.assign(out[0], { eth, ethPerShare });
+      else out.push({ date: ethDate, eth, ethPerShare } as (typeof out)[number]);
+    }
+    return out;
   },
 };

@@ -9,6 +9,8 @@ export interface FundSnapshot {
   nav?: number;
   /** Ether held by the fund. */
   eth?: number;
+  /** Ether per share, when the issuer publishes it (lets a flow be priced without a same-day AUM). */
+  ethPerShare?: number;
   /** Net assets in USD. */
   aum?: number;
 }

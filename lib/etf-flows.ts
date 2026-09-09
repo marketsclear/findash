@@ -5,7 +5,8 @@ import type { FundSnapshot } from "./sources/etf/types";
 /**
  * Daily net flows per fund, derived from consecutive issuer snapshots:
  *   shares method: (shares_t − shares_prev) × NAV_t
- *   eth method:    (eth_t − eth_prev) × (AUM_t / eth_t)   (funds that publish no share count)
+ *   eth method:    (eth_t − eth_prev) × price_t, price = AUM_t / eth_t or NAV_t / etherPerShare_t
+ *                  (funds whose share count is unpublished or stale)
  * With sharesLag = 1 the count published on NAV date t reflects orders placed on the previous NAV
  * date, so the change is attributed to that earlier date and valued at its NAV; with sharesLag = 0 it is
  * attributed to t. The gap between snapshots is normally one trading day but can be longer around
@@ -40,19 +41,26 @@ function derivedFlows(fund: EtfFundStore): FundFlow[] {
   let prev: FundSnapshot | null = null;
   for (const d of days) {
     const s = fund.days[d];
-    const usable = fund.method === "shares" ? s.shares !== undefined && s.nav !== undefined : s.eth !== undefined && s.aum !== undefined;
+    const usable = fund.method === "shares" ? s.shares !== undefined && s.nav !== undefined : s.eth !== undefined && ethPrice(s) !== undefined;
     if (!usable) continue;
     if (prev) {
       const lagged = (fund.sharesLag ?? 0) === 1;
       const at = lagged ? prev : s; // snapshot whose date and NAV the flow belongs to
       let usd: number;
       if (fund.method === "shares") usd = (s.shares! - prev.shares!) * at.nav!;
-      else usd = (s.eth! - prev.eth!) * (at.aum! / at.eth!);
+      else usd = (s.eth! - prev.eth!) * ethPrice(at)!;
       out.push({ date: at.date, usd, from: lagged ? s.date : prev.date, nav: at.nav, shares: at.shares, eth: at.eth, aum: at.aum });
     }
     prev = s;
   }
   return out;
+}
+
+/** Implied ether price for a snapshot: AUM per ether, or NAV per ether-per-share. */
+function ethPrice(s: FundSnapshot): number | undefined {
+  if (s.aum !== undefined && s.eth) return s.aum / s.eth;
+  if (s.nav !== undefined && s.ethPerShare) return s.nav / s.ethPerShare;
+  return undefined;
 }
 
 export interface EtfFlowTable {
