@@ -84,9 +84,21 @@ export interface FlowWindow {
   days: number;
 }
 
-/** Sum of total daily flows over calendar windows ending on the latest reported day. */
+/**
+ * The most recent day for which the table is reasonably complete: at least half of the funds that
+ * report at all have a value. Issuers with a one-day share-count lag only fill a day once the next
+ * NAV is published, so the newest row is often just the same-day issuers.
+ */
+export function latestCompleteDay(table: EtfFlowTable): Day | null {
+  const active = new Set<string>();
+  for (const r of table.rows) for (const [t, v] of Object.entries(r.byFund)) if (v !== null) active.add(t);
+  const need = Math.max(1, Math.ceil(active.size / 2));
+  return table.rows.find((r) => r.reporting >= need)?.date ?? table.rows[0]?.date ?? null;
+}
+
+/** Sum of total daily flows over calendar windows ending on the latest reasonably complete day. */
 export function flowWindows(table: EtfFlowTable): FlowWindow[] {
-  const latest = table.rows[0]?.date;
+  const latest = latestCompleteDay(table);
   if (!latest) return [];
   const sumFrom = (start: Day) => {
     let usd = 0, days = 0;

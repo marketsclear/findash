@@ -10,8 +10,8 @@ function Flow({ v, compact }: { v: number | null; compact?: boolean }) {
 }
 
 export function EtfSection({ etf }: { etf: EtfData }) {
-  const { tickers, table, windows, funds, chart, updatedAt } = etf;
-  const latest = table.rows[0];
+  const { tickers, table, windows, funds, chart, updatedAt, latestDay } = etf;
+  const latest = table.rows.find((r) => r.date === latestDay);
   return (
     <section className="space-y-4">
       <header className="flex flex-wrap items-baseline justify-between gap-2">
@@ -19,7 +19,7 @@ export function EtfSection({ etf }: { etf: EtfData }) {
           <h2 className="text-base font-semibold">US spot Ethereum ETF flows</h2>
           <p className="text-sm text-ink-2">
             Net creations and redemptions in USD, from each issuer&apos;s own daily NAV, share count and holdings.
-            {latest ? ` Latest day ${fmtDay(latest.date, { year: true })}, ${latest.reporting} of ${tickers.length} funds reporting.` : ""}
+            {latest ? ` Latest complete day ${fmtDay(latest.date, { year: true })} (${latest.reporting} of ${tickers.length} funds); most issuers publish a day's count with the next NAV.` : ""}
           </p>
         </div>
         <span className="text-xs text-muted">Collected {fmtTime(updatedAt)}</span>

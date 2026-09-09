@@ -7,7 +7,7 @@ import { LighterStore, liveLighter24h } from "./sources/lighter";
 import { fetchValuations, TokenValuation } from "./sources/coingecko";
 import { readStore } from "./store";
 import type { EtfStore } from "./sources/etf";
-import { flowTable, flowWindows, latestSnapshots, type EtfFlowTable, type FlowWindow } from "./etf-flows";
+import { flowTable, flowWindows, latestCompleteDay, latestSnapshots, type EtfFlowTable, type FlowWindow } from "./etf-flows";
 import type { FundSnapshot } from "./sources/etf/types";
 
 const STALE_MS = 60 * 60 * 1000;
@@ -64,6 +64,8 @@ export interface EtfData {
   funds: Record<string, { name: string; issuer: string; method: "shares" | "eth"; latest: FundSnapshot | null; lastError?: string }>;
   /** Daily total net flow, oldest first, for the chart. */
   chart: { day: Day; value: number; detail?: string }[];
+  /** Newest day with a reasonably complete set of funds (see latestCompleteDay). */
+  latestDay: Day | null;
   updatedAt: string | null;
 }
 
@@ -78,7 +80,7 @@ export function buildEtfData(store: EtfStore | null): EtfData {
     ETF_TICKERS.map((t) => [t, { name: s.funds[t]?.name ?? t, issuer: s.funds[t]?.issuer ?? "", method: s.funds[t]?.method ?? "shares", latest: latest[t], lastError: s.funds[t]?.lastError }]),
   );
   const chart = [...table.rows].reverse().slice(-120).map((r) => ({ day: r.date, value: r.total, detail: r.reporting < ETF_TICKERS.length ? `${r.reporting} of ${ETF_TICKERS.length} funds reported` : undefined }));
-  return { tickers: ETF_TICKERS, table: { tickers: table.tickers, rows: table.rows.slice(0, 20) }, windows: flowWindows(table), funds, chart, updatedAt: store?.updatedAt ?? null };
+  return { tickers: ETF_TICKERS, table: { tickers: table.tickers, rows: table.rows.slice(0, 20) }, windows: flowWindows(table), funds, chart, latestDay: latestCompleteDay(table), updatedAt: store?.updatedAt ?? null };
 }
 
 export interface DashboardData {
