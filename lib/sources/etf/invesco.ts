@@ -1,17 +1,15 @@
-import { fetchJson } from "../../http";
-import { BROWSER_UA, FundAdapter, toDay } from "./types";
+import { impersonateFetch } from "./impersonate";
+import { FundAdapter, toDay } from "./types";
 
 /**
- * Invesco Galaxy Ethereum ETF (QETH). The product page's data API answers non-browser clients as long
- * as the request carries browser-like Accept/Origin/Referer headers. Latest day only.
+ * Invesco Galaxy Ethereum ETF (QETH). The product page's data API sits behind Akamai and rejects
+ * non-browser TLS fingerprints (406), so requests go through the impersonating helper. Latest day only.
  */
 const BASE = "https://dng-api.invesco.com/cache/v1/accounts/en_US/shareclasses/46148D107";
 const headers = {
-  "user-agent": BROWSER_UA,
   accept: "application/json, text/plain, */*",
   origin: "https://www.invesco.com",
   referer: "https://www.invesco.com/",
-  "accept-language": "en-US,en;q=0.9",
 };
 
 export const qeth: FundAdapter = {
@@ -23,18 +21,15 @@ export const qeth: FundAdapter = {
   sharesLag: 1,
   lagUnverified: true,
   async fetch() {
-    const [prices, details] = await Promise.all([
-      fetchJson<{ effectiveDate: string; nav: number; sharesOutstanding: number }>(
-        `${BASE}/prices?idType=cusip&variationType=priceListing&productType=ETF&productSubType=ETF-Non-40%20Act`,
-        { headers },
-      ),
-      fetchJson<{ shareclassTotalNetAssets?: number; shareclassTotalNetAssetsEffectiveDate?: string }>(
-        `${BASE}?expand=nav&idType=cusip&variationType=fundDetails&productType=ETF`,
-        { headers },
-      ).catch(() => null),
+    const [p, d] = await impersonateFetch([
+      { url: `${BASE}/prices?idType=cusip&variationType=priceListing&productType=ETF&productSubType=ETF-Non-40%20Act`, headers },
+      { url: `${BASE}?expand=nav&idType=cusip&variationType=fundDetails&productType=ETF`, headers },
     ]);
+    if (p.status !== 200) throw new Error(`QETH: prices endpoint ${p.status}`);
+    const prices = JSON.parse(p.text) as { effectiveDate: string; nav: number; sharesOutstanding: number };
+    const details = d.status === 200 ? (JSON.parse(d.text) as { shareclassTotalNetAssets?: number; shareclassTotalNetAssetsEffectiveDate?: string }) : null;
     const date = toDay(prices.effectiveDate);
-    if (!date || !prices.sharesOutstanding || !prices.nav) throw new Error(`QETH: unexpected payload ${JSON.stringify(prices).slice(0, 200)}`);
+    if (!date || !prices.sharesOutstanding || !prices.nav) throw new Error(`QETH: unexpected payload ${p.text.slice(0, 200)}`);
     const aum = details && details.shareclassTotalNetAssetsEffectiveDate === prices.effectiveDate ? details.shareclassTotalNetAssets : prices.nav * prices.sharesOutstanding;
     return [{ date, shares: prices.sharesOutstanding, nav: prices.nav, aum }];
   },

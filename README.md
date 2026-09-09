@@ -32,11 +32,15 @@ price). Windows sum the total over calendar periods ending on the latest reporte
 | ETHA, ETHB | BlackRock | iShares fund-download workbook (Historical sheet) + latest-holdings.csv | since launch |
 | ETHE, ETH | Grayscale | product-performance workbook on S3 (the ETF pages themselves block non-browsers) | since launch |
 | TETH (ex CETH) | 21Shares | `api.primary.21shares.com` product details + valuation history | since launch |
-| QETH | Invesco | `dng-api.invesco.com` prices endpoint (needs browser-like headers; Akamai may still refuse) | from first collection |
+| QETH | Invesco | `dng-api.invesco.com` prices endpoint, fetched with a Chrome TLS fingerprint (Akamai rejects plain clients) | from first collection |
 | ETHW | Bitwise | fund page (server-rendered) | from first collection |
 | ETHV | VanEck | holdings dataset JSON behind the fund page (needs the cookie-consent cookie) | from first collection |
 | EZET | Franklin Templeton | fund page rendered in headless Chromium | from first collection |
-| FETH | Fidelity | institutional quote payload via headless Chromium; Akamai bot management usually blocks it | from first collection |
+| FETH | Fidelity | institutional research quote API (page → CSRF token → quote), fetched with a Chrome TLS fingerprint | from first collection |
+
+Fidelity and Invesco sit behind Akamai bot management, which scores the TLS handshake; `scripts/impersonate_fetch.py`
+(Python, `curl_cffi`) performs those requests with a Chrome fingerprint and a shared cookie jar. Franklin's page is
+read with headless Chromium (Playwright).
 
 Collection runs from `.github/workflows/etf.yml` after US close (03:30 UTC) with a second pass at
 13:00 UTC, or locally with `pnpm collect:etf`. A failing issuer keeps its previous rows and shows a
