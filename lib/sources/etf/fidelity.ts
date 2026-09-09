@@ -1,5 +1,5 @@
 import { impersonateFetch } from "./impersonate";
-import { FundAdapter, num, toDay } from "./types";
+import { FundAdapter, FundSnapshot, num, toDay } from "./types";
 
 /**
  * Fidelity Ethereum Fund (FETH). The institutional research page's quote API returns a share count
@@ -53,13 +53,13 @@ export const feth: FundAdapter = {
     const nav = q.navPreviousDay?.value;
     const date = q.navPreviousDay?.asOfDate ? toDay(q.navPreviousDay.asOfDate) : undefined;
     if (!date || shares === undefined || nav === undefined) throw new Error(`FETH: incomplete quote ${JSON.stringify(q).slice(0, 200)}`);
-    const out = [{ date, shares, nav, aum: nav * shares }];
+    const out: FundSnapshot[] = [{ date, shares, nav, aum: nav * shares }];
     const ethDate = q.cryptoDetails?.asOfDate ? toDay(q.cryptoDetails.asOfDate) : undefined;
     const eth = q.cryptoDetails?.totalUnitPerCoin;
     const ethPerShare = q.cryptoDetails?.unitPerShare;
     if (ethDate && eth) {
       if (ethDate === date) Object.assign(out[0], { eth, ethPerShare });
-      else out.push({ date: ethDate, eth, ethPerShare } as (typeof out)[number]);
+      else out.push({ date: ethDate, eth, ethPerShare });
     }
     return out;
   },
