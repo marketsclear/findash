@@ -45,3 +45,9 @@ export function fmtPp(p: number | null | undefined): string {
   if (p === null || p === undefined || !Number.isFinite(p)) return "–";
   return `${p > 0 ? "+" : ""}${p.toFixed(1)} pp`;
 }
+
+/** Signed compact USD: +$1.2M / −$340K / $0. */
+export function fmtSigned(v: number): string {
+  if (v === 0) return "$0";
+  return `${v > 0 ? "+" : "−"}${fmtUsd(Math.abs(v))}`;
+}

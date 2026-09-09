@@ -2,7 +2,7 @@
 export async function fetchJson<T>(
   url: string,
   init: RequestInit = {},
-  opts: { retries?: number; timeoutMs?: number } = {},
+  opts: { retries?: number; timeoutMs?: number; parse?: "json" | "text" | "bytes" } = {},
 ): Promise<T> {
   const retries = opts.retries ?? 8;
   const timeoutMs = opts.timeoutMs ?? 60_000;
@@ -21,6 +21,8 @@ export async function fetchJson<T>(
       if (!res.ok) {
         throw new Error(`${res.status} ${res.statusText} for ${url}: ${(await res.text()).slice(0, 200)}`);
       }
+      if (opts.parse === "text") return (await res.text()) as T;
+      if (opts.parse === "bytes") return new Uint8Array(await res.arrayBuffer()) as T;
       return (await res.json()) as T;
     } catch (err) {
       const throttled = err instanceof RetryableError && err.status !== undefined && err.status < 500;

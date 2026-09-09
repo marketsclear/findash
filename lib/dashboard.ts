@@ -6,6 +6,9 @@ import { HlStore, liveHyperliquid24h } from "./sources/hyperliquid";
 import { LighterStore, liveLighter24h } from "./sources/lighter";
 import { fetchValuations, TokenValuation } from "./sources/coingecko";
 import { readStore } from "./store";
+import type { EtfStore } from "./sources/etf";
+import { flowTable, flowWindows, latestSnapshots, type EtfFlowTable, type FlowWindow } from "./etf-flows";
+import type { FundSnapshot } from "./sources/etf/types";
 
 const STALE_MS = 60 * 60 * 1000;
 
@@ -54,6 +57,30 @@ export function refreshMode(): "inprocess" | "external" {
   return process.env.FINDASH_REFRESH === "external" ? "external" : "inprocess";
 }
 
+export interface EtfData {
+  tickers: string[];
+  table: EtfFlowTable;
+  windows: FlowWindow[];
+  funds: Record<string, { name: string; issuer: string; method: "shares" | "eth"; latest: FundSnapshot | null; lastError?: string }>;
+  /** Daily total net flow, oldest first, for the chart. */
+  chart: { day: Day; value: number; detail?: string }[];
+  updatedAt: string | null;
+}
+
+export const ETF_TICKERS = ["ETHA", "ETHB", "FETH", "ETHW", "TETH", "ETHV", "QETH", "EZET", "ETHE", "ETH"];
+
+export function buildEtfData(store: EtfStore | null): EtfData {
+  const empty: EtfStore = { updatedAt: "", funds: {} };
+  const s = store ?? empty;
+  const table = flowTable(s, ETF_TICKERS, 400);
+  const latest = latestSnapshots(s, ETF_TICKERS);
+  const funds = Object.fromEntries(
+    ETF_TICKERS.map((t) => [t, { name: s.funds[t]?.name ?? t, issuer: s.funds[t]?.issuer ?? "", method: s.funds[t]?.method ?? "shares", latest: latest[t], lastError: s.funds[t]?.lastError }]),
+  );
+  const chart = [...table.rows].reverse().slice(-120).map((r) => ({ day: r.date, value: r.total, detail: r.reporting < ETF_TICKERS.length ? `${r.reporting} of ${ETF_TICKERS.length} funds reported` : undefined }));
+  return { tickers: ETF_TICKERS, table: { tickers: table.tickers, rows: table.rows.slice(0, 20) }, windows: flowWindows(table), funds, chart, updatedAt: store?.updatedAt ?? null };
+}
+
 export interface DashboardData {
   generatedAt: string;
   /** Last complete UTC day; every window ends here. */
@@ -64,6 +91,7 @@ export interface DashboardData {
   ratio: RatioData;
   /** Live token valuations (CoinGecko); null when the lookup failed. */
   valuation: ValuationData | null;
+  etf: EtfData;
   refresh: ReturnType<typeof getRefreshState>;
   refreshMode: "inprocess" | "external";
   hasData: boolean;
@@ -116,10 +144,11 @@ async function safe<T>(key: string, p: Promise<T>, timeoutMs = 8000): Promise<T 
 }
 
 export async function getDashboardData(): Promise<DashboardData> {
-  const [hl, lighter, llama] = await Promise.all([
+  const [hl, lighter, llama, etfStore] = await Promise.all([
     readStore<HlStore>("hyperliquid"),
     readStore<LighterStore>("lighter"),
     readStore<LlamaStore>("defillama"),
+    readStore<EtfStore>("etf-eth"),
   ]);
 
   const newest = Math.max(...[hl, lighter, llama].map((s) => (s ? Date.parse(s.updatedAt) : 0)));
@@ -190,6 +219,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     exchanges,
     ratio,
     valuation,
+    etf: buildEtfData(etfStore),
     refresh: getRefreshState(),
     refreshMode: refreshMode(),
     hasData: !!(hl && lighter && llama),

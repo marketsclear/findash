@@ -2,6 +2,7 @@ import { readStore, writeStore } from "./store";
 import { collectDefiLlama, LlamaStore } from "./sources/defillama";
 import { collectHyperliquid, HlStore } from "./sources/hyperliquid";
 import { collectLighter, LighterStore } from "./sources/lighter";
+import { collectEtf, EtfStore } from "./sources/etf";
 
 export interface RefreshState {
   running: boolean;
@@ -24,7 +25,7 @@ export function getRefreshState(): RefreshState {
 }
 
 /** Refresh every collector. Concurrent callers share the in-flight run. */
-export function startRefresh(logger: (msg: string) => void = () => {}): Promise<void> {
+export function startRefresh(logger: (msg: string) => void = () => {}, scope: "dex" | "etf" | "all" = "dex"): Promise<void> {
   if (slot.promise) return slot.promise;
   const state = slot.state;
   state.running = true;
@@ -38,11 +39,18 @@ export function startRefresh(logger: (msg: string) => void = () => {}): Promise<
     logger(msg);
   };
   slot.promise = (async () => {
-    const results = await Promise.allSettled([
-      readStore<HlStore>("hyperliquid").then((prev) => collectHyperliquid(prev, log)).then((s) => writeStore("hyperliquid", s)),
-      readStore<LighterStore>("lighter").then((prev) => collectLighter(prev, log)).then((s) => writeStore("lighter", s)),
-      collectDefiLlama(log).then((s: LlamaStore) => writeStore("defillama", s)),
-    ]);
+    const jobs: Promise<void>[] = [];
+    if (scope !== "etf") {
+      jobs.push(
+        readStore<HlStore>("hyperliquid").then((prev) => collectHyperliquid(prev, log)).then((s) => writeStore("hyperliquid", s)),
+        readStore<LighterStore>("lighter").then((prev) => collectLighter(prev, log)).then((s) => writeStore("lighter", s)),
+        collectDefiLlama(log).then((s: LlamaStore) => writeStore("defillama", s)),
+      );
+    }
+    if (scope !== "dex") {
+      jobs.push(readStore<EtfStore>("etf-eth").then((prev) => collectEtf(prev, log)).then((s) => writeStore("etf-eth", s)));
+    }
+    const results = await Promise.allSettled(jobs);
     const errors = results.filter((r): r is PromiseRejectedResult => r.status === "rejected").map((r) => String(r.reason?.message ?? r.reason));
     for (const e of errors) log(`error: ${e}`);
     state.error = errors.length ? errors.join("; ") : null;

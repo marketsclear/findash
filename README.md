@@ -19,6 +19,30 @@ re-fetches the last three days for every market and takes several minutes becaus
 Data is cached as JSON files in `data/` (gitignored, regenerable). Override the location with
 `FINDASH_DATA_DIR`.
 
+## US spot Ethereum ETF flows
+
+Daily net creations/redemptions per fund, in the style of Farside's table but computed from each
+issuer's own published data (no third-party flow feeds). Flow = change in shares outstanding × NAV,
+attributed to the order date (issuers that publish counts with a one-day settlement lag are shifted
+back one trading day; VanEck publishes no share count, so its flow is the change in ether held × implied
+price). Windows sum the total over calendar periods ending on the latest reported day.
+
+| Fund | Issuer | Source | History |
+|---|---|---|---|
+| ETHA, ETHB | BlackRock | iShares fund-download workbook (Historical sheet) + latest-holdings.csv | since launch |
+| ETHE, ETH | Grayscale | product-performance workbook on S3 (the ETF pages themselves block non-browsers) | since launch |
+| TETH (ex CETH) | 21Shares | `api.primary.21shares.com` product details + valuation history | since launch |
+| QETH | Invesco | `dng-api.invesco.com` prices endpoint (needs browser-like headers; Akamai may still refuse) | from first collection |
+| ETHW | Bitwise | fund page (server-rendered) | from first collection |
+| ETHV | VanEck | holdings dataset JSON behind the fund page (needs the cookie-consent cookie) | from first collection |
+| EZET | Franklin Templeton | fund page rendered in headless Chromium | from first collection |
+| FETH | Fidelity | institutional quote payload via headless Chromium; Akamai bot management usually blocks it | from first collection |
+
+Collection runs from `.github/workflows/etf.yml` after US close (03:30 UTC) with a second pass at
+13:00 UTC, or locally with `pnpm collect:etf`. A failing issuer keeps its previous rows and shows a
+"!" marker in the section footer. The share-count lag for issuers without history is an assumption
+until verified against an independent table (`lagUnverified` in the adapters).
+
 ## Deploying (Vercel + Neon + GitHub Actions)
 
 The web app is stateless; history lives in Postgres and is refreshed by a scheduled GitHub Actions job,

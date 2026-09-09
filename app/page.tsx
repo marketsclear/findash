@@ -1,4 +1,5 @@
 import { ChartsSection } from "@/components/ChartsSection";
+import { EtfSection } from "@/components/EtfSection";
 import { ExchangeCard } from "@/components/ExchangeCard";
 import { RatioCard } from "@/components/RatioCard";
 import { RefreshButton } from "@/components/RefreshButton";
@@ -77,6 +78,10 @@ export default async function Page() {
         exchanges={data.exchanges.map((e) => ({ id: e.id, name: e.name, color: COLORS[e.id], volume: e.volume.points, revenue: e.revenue.points }))}
       />
 
+      <div className="my-10 border-t border-border" />
+
+      <EtfSection etf={data.etf} />
+
       <footer className="mt-8 space-y-1 text-xs text-muted">
         <p>
           Volume: Hyperliquid perps (incl. HIP-3 builder markets) from the Hyperliquid candle API, spot from DefiLlama; Lighter perps, spot and the Robinhood
@@ -89,6 +94,11 @@ export default async function Page() {
         </p>
         <p>
           Valuations: CoinGecko. FDV uses each token&apos;s total supply (HYPE ~955M of a 1B max, LIT 1B); circulating market cap uses circulating supply.
+        </p>
+        <p>
+          ETF flows: change in shares outstanding × NAV per issuer-reported day (VanEck: change in ether held × implied price). Sources: iShares fund
+          download, Grayscale product-performance workbooks, 21Shares API, Invesco product API, Bitwise and Franklin fund pages, VanEck holdings dataset,
+          Fidelity institutional quote. History since launch for ETHA, ETHB, ETHE, ETH and TETH; the others accumulate from the first collection.
         </p>
         <p>Deltas compare each window with the preceding window of equal length; YTD compares with the same dates last year. Amounts in USD.</p>
       </footer>
