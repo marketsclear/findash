@@ -2,9 +2,11 @@ name: Collect ETF data
 
 on:
   schedule:
-    # Issuers publish NAV data in the US evening; run at 23:30 ET (03:30 UTC) and again next morning.
-    - cron: "30 3 * * 2-6"
-    - cron: "0 13 * * 1-5"
+    # Observed publication times (UTC) for a trading day T: iShares and Grayscale ~22:30 on T,
+    # Franklin ~00:20, Invesco ~04:00, Morgan Stanley ~05:30, VanEck ~10:15 on T+1, Bitwise during
+    # the US day on T+1. Five short runs cover them; each takes about ten seconds.
+    - cron: "15 23 * * 1-5"
+    - cron: "0 1,6,11,19 * * 2-6"
   workflow_dispatch:
 
 concurrency:

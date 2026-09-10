@@ -37,7 +37,7 @@ price). Windows sum the total over calendar periods ending on the latest reporte
 | ETHV | VanEck | holdings dataset JSON behind the fund page (needs the cookie-consent cookie) | from first collection |
 | EZET | Franklin Templeton | fund page rendered in headless Chromium | from first collection |
 | MSSE | Morgan Stanley | product-page JSON (pricing + trade-date holdings), fetched with a Chrome TLS fingerprint; listed 28 Jul 2026, not on Farside | from first collection |
-| FETH | Fidelity | institutional research quote API (page → CSRF token → quote), fetched with a Chrome TLS fingerprint | from first collection |
+| FETH | Fidelity | institutional research quote API (page → CSRF token → quote), fetched with a Chrome TLS fingerprint; flow from ether held, since the published share count lags by days | from first collection |
 
 Fidelity and Invesco sit behind Akamai bot management, which scores the TLS handshake; `scripts/impersonate_fetch.py`
 (Python, `curl_cffi`) performs those requests with a Chrome fingerprint and a shared cookie jar. Franklin's page is
@@ -51,8 +51,12 @@ precedence as soon as it exists. To refresh the seed: with `pnpm dev` running, o
 `/api/seed/farside?part=N&d=<json>` in chunks (the site's CSP blocks fetch), then run
 `pnpm tsx scripts/etf-seed-farside.ts` (and again with `DATABASE_URL` for production).
 
-Collection runs from `.github/workflows/etf.yml` after US close (03:30 UTC) with a second pass at
-13:00 UTC, or locally with `pnpm collect:etf`. A failing issuer keeps its previous rows and shows a
+Collection runs from `.github/workflows/etf.yml` five times around each trading day (23:15 UTC on
+the day, then 01:00, 06:00, 11:00 and 19:00 UTC), matching when the issuers publish; or locally with
+`pnpm collect:etf`. Verified 8-9 Sep 2026: iShares and Grayscale post the next day's count around
+22:30 UTC, Franklin ~00:20, Invesco ~04:00, Morgan Stanley ~05:30, VanEck ~10:15, Bitwise later in
+the US day. Third-party tables (Farside) have the same numbers by ~07:00 UTC from vendor settlement
+feeds, so the dashboard trails them by up to a day for the latest row. A failing issuer keeps its previous rows and shows a
 "!" marker in the section footer. The share-count lag for issuers without history is an assumption
 until verified against an independent table (`lagUnverified` in the adapters).
 
