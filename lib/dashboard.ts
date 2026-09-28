@@ -83,6 +83,23 @@ export function buildEtfData(store: EtfStore | null): EtfData {
   return { tickers: ETF_TICKERS, table: { tickers: table.tickers, rows: table.rows.slice(0, 20) }, windows: flowWindows(table), funds, chart, latestDay: latestCompleteDay(table), updatedAt: store?.updatedAt ?? null };
 }
 
+/**
+ * What LIT would be worth if the market valued Lighter at the same revenue multiple as Hyperliquid:
+ * HYPE valuation × (Lighter revenue / Hyperliquid revenue over the monthly window), divided by LIT supply.
+ */
+export interface FairValueData {
+  /** Lighter's 30-day revenue as a percentage of Hyperliquid's. */
+  revenuePct: number;
+  from: Day;
+  through: Day;
+  lighterRevenue: number;
+  hyperliquidRevenue: number;
+  /** Fully diluted basis: HYPE FDV × ratio / LIT total supply. */
+  fdv: { impliedValuation: number; price: number; upsidePct: number };
+  /** Circulating basis: HYPE market cap × ratio / LIT circulating supply. */
+  marketCap: { impliedValuation: number; price: number; upsidePct: number };
+}
+
 export interface DashboardData {
   generatedAt: string;
   /** Last complete UTC day; every window ends here. */
@@ -93,6 +110,8 @@ export interface DashboardData {
   ratio: RatioData;
   /** Live token valuations (CoinGecko); null when the lookup failed. */
   valuation: ValuationData | null;
+  /** LIT fair value at Hyperliquid's revenue multiple; null without prices or revenue data. */
+  fairValue: FairValueData | null;
   etf: EtfData;
   refresh: ReturnType<typeof getRefreshState>;
   refreshMode: "inprocess" | "external";
@@ -134,6 +153,29 @@ function ratioBlock(num: MetricBlock, den: MetricBlock, windows: Window[]) {
 // consuming the Hyperliquid rate budget) degrades to a slightly stale figure instead of a blank.
 const lastGood = (globalThis as unknown as { __findashLive?: Map<string, unknown> }).__findashLive ??= new Map<string, unknown>();
 (globalThis as unknown as { __findashLive?: Map<string, unknown> }).__findashLive = lastGood;
+
+function buildFairValue(valuation: ValuationData | null, lighter: WindowStat, hl: WindowStat): FairValueData | null {
+  if (!valuation || lighter.value === null || hl.value === null || hl.value <= 0) return null;
+  // Only compare like with like: both series must cover the full window.
+  if (lighter.partial || hl.partial || !lighter.from || !lighter.through) return null;
+  const r = lighter.value / hl.value;
+  const { hype, lit } = valuation;
+  const basis = (hypeValue: number, litSupply: number) => {
+    const impliedValuation = hypeValue * r;
+    const price = impliedValuation / litSupply;
+    return { impliedValuation, price, upsidePct: (price / lit.price - 1) * 100 };
+  };
+  if (!lit.totalSupply || !lit.circulatingSupply || !lit.price) return null;
+  return {
+    revenuePct: r * 100,
+    from: lighter.from,
+    through: lighter.through,
+    lighterRevenue: lighter.value,
+    hyperliquidRevenue: hl.value,
+    fdv: basis(hype.fdv, lit.totalSupply),
+    marketCap: basis(hype.marketCap, lit.circulatingSupply),
+  };
+}
 
 async function safe<T>(key: string, p: Promise<T>, timeoutMs = 8000): Promise<T | null> {
   try {
@@ -214,6 +256,8 @@ export async function getDashboardData(): Promise<DashboardData> {
     revenue: ratioBlock(lighterData.revenue, hlData.revenue, windows),
   };
 
+  const fairValue = buildFairValue(valuation, lighterData.revenue.windows.monthly, hlData.revenue.windows.monthly);
+
   return {
     generatedAt: new Date().toISOString(),
     asOf,
@@ -221,6 +265,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     exchanges,
     ratio,
     valuation,
+    fairValue,
     etf: buildEtfData(etfStore),
     refresh: getRefreshState(),
     refreshMode: refreshMode(),

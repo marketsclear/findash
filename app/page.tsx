@@ -4,7 +4,7 @@ import { ExchangeCard } from "@/components/ExchangeCard";
 import { RatioCard } from "@/components/RatioCard";
 import { RefreshButton } from "@/components/RefreshButton";
 import { getDashboardData } from "@/lib/dashboard";
-import { fmtDay, fmtShare, fmtTime, fmtUsd } from "@/lib/format";
+import { fmtDay, fmtPct, fmtRange, fmtShare, fmtTime, fmtUsd } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -65,6 +65,37 @@ export default async function Page() {
         )}
       </section>
 
+      {data.fairValue && data.valuation && (
+        <section className="mb-4 flex flex-wrap items-center gap-x-8 gap-y-2 rounded-lg border border-border bg-surface px-5 py-4">
+          <div>
+            <div className="text-xs uppercase tracking-wide text-muted">LIT fair value at HYPE&apos;s revenue multiple</div>
+            <div className="mt-1 flex items-baseline gap-3">
+              <span className="text-5xl font-semibold leading-none text-ink">${data.fairValue.fdv.price.toFixed(2)}</span>
+              <span className={`text-sm font-medium ${data.fairValue.fdv.upsidePct >= 0 ? "text-good" : "text-bad"}`}>
+                <span aria-hidden="true">{data.fairValue.fdv.upsidePct >= 0 ? "▲" : "▼"}</span> {fmtPct(data.fairValue.fdv.upsidePct)} vs ${data.valuation.lit.price.toFixed(2)}
+              </span>
+            </div>
+          </div>
+          <dl className="grid grid-cols-[auto_auto] gap-x-4 gap-y-0.5 text-sm text-ink-2">
+            <dt>30-day revenue</dt>
+            <dd className="tabular-nums">
+              <span className="font-semibold text-ink">{fmtShare(data.fairValue.revenuePct)}</span> of Hyperliquid · {fmtUsd(data.fairValue.lighterRevenue)} / {fmtUsd(data.fairValue.hyperliquidRevenue)} ·{" "}
+              {fmtRange(data.fairValue.from, data.fairValue.through)}
+            </dd>
+            <dt>Fully diluted</dt>
+            <dd className="tabular-nums">
+              HYPE FDV {fmtUsd(data.valuation.hype.fdv)} × {fmtShare(data.fairValue.revenuePct)} = LIT FDV {fmtUsd(data.fairValue.fdv.impliedValuation)} ÷{" "}
+              {fmtUsd(data.valuation.lit.totalSupply).replace("$", "")} LIT
+            </dd>
+            <dt>Circulating basis</dt>
+            <dd className="tabular-nums">
+              <span className="font-semibold text-ink">${data.fairValue.marketCap.price.toFixed(2)}</span> ({fmtPct(data.fairValue.marketCap.upsidePct)}) · HYPE mcap{" "}
+              {fmtUsd(data.valuation.hype.marketCap)} × {fmtShare(data.fairValue.revenuePct)} ÷ {fmtUsd(data.valuation.lit.circulatingSupply).replace("$", "")} LIT
+            </dd>
+          </dl>
+        </section>
+      )}
+
       <div className="mb-8 grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
         {data.exchanges.map((ex) => (
           <ExchangeCard key={ex.id} ex={ex} windows={data.windows} color={COLORS[ex.id]} />
@@ -93,7 +124,10 @@ export default async function Page() {
           maker/taker/transfer/withdraw fees kept by the protocol (excludes liquidation fees paid to the LLP).
         </p>
         <p>
-          Valuations: CoinGecko. FDV uses each token&apos;s total supply (HYPE ~955M of a 1B max, LIT 1B); circulating market cap uses circulating supply.
+          Valuations: CoinGecko. FDV uses each token&apos;s total supply (HYPE ~955M of a 1B max, LIT 1B); circulating market cap uses circulating supply. LIT
+          fair value applies HYPE&apos;s valuation-to-revenue multiple to Lighter&apos;s revenue over the monthly window (last 30 complete UTC days): HYPE
+          valuation × Lighter revenue / Hyperliquid revenue, divided by LIT supply. It assumes equal multiples and ignores differences in growth, token
+          unlocks and how each protocol returns revenue to holders.
         </p>
         <p>
           ETF flows: change in shares outstanding × NAV per issuer-reported day (VanEck: change in ether held × implied price). Sources: iShares fund
