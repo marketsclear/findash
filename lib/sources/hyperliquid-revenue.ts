@@ -7,8 +7,9 @@ import { info, type SpotMeta } from "./hyperliquid";
  * fund's own fills on Hyperliquid (info API, `userFillsByTime`). Trading fees (after HLP's 1%,
  * builder-code fees and HIP-3 deployer shares) flow to the fund, which buys HYPE continuously; this
  * is what Hyperliquid's stats site reports as "HyperCore buybacks". Verified 30 Sep 2026: our sums
- * for 26-29 Sep equal the stats site's figures to the dollar. HIP-1/HIP-3 deployment-auction burns
- * (about 0.4% of revenue over the last 30 days) are not included.
+ * for 26-29 Sep equal the stats site's figures to the dollar. HYPE burned in HIP-1/HIP-3 deployment
+ * auctions and as HyperEVM fees is not included (0.4% of revenue over the 30 days to 29 Sep 2026,
+ * 1.8% over the year).
  *
  * The API serves only a user's most recent 10,000 fills, about ten days at the current pace, so the
  * collector must run at least weekly. History before the first collection comes from a one-time seed

@@ -121,8 +121,8 @@ export default async function Page() {
           exchange&apos;s own rolling figure. Volume is single-sided notional, the same convention as Hyperliquid&apos;s stats site.
         </p>
         <p>
-          Revenue: Hyperliquid = USD the Assistance Fund spends buying back HYPE, from the fund&apos;s own fills on Hyperliquid (deployment-auction burns,
-          about 0.4%, are not included)
+          Revenue: Hyperliquid = USD the Assistance Fund spends buying back HYPE, from the fund&apos;s own fills on Hyperliquid. HYPE burned in deployment
+          auctions and as HyperEVM fees is not included (about 0.4% of revenue over the last 30 days, 1.8% over the last year)
           {data.hlRevenueSeededThrough
             ? `; up to ${fmtDay(data.hlRevenueSeededThrough, { year: true })} from a one-time copy of the buyback series on Hyperliquid's stats site, which matches the fund's fills to the dollar`
             : ""}
