@@ -1,10 +1,10 @@
 import { addDays, Day, eachDay, todayUtc } from "./days";
 import { getRefreshState, startRefresh } from "./collect";
 import { DailySeries, makeSeries, sumSeries, Window, windowsEnding, windowStat, WindowStat, WindowKey } from "./metrics";
-import { LlamaStore } from "./sources/defillama";
 import { HlStore, liveHyperliquid24h } from "./sources/hyperliquid";
+import { hlRevenueSeries, type HlRevenueStore } from "./sources/hyperliquid-revenue";
 import { LighterStore, liveLighter24h } from "./sources/lighter";
-import { fetchValuations, TokenValuation } from "./sources/coingecko";
+import { fetchValuations, TokenValuation } from "./sources/valuation";
 import { readStore } from "./store";
 import type { EtfStore } from "./sources/etf";
 import { flowTable, flowWindows, latestCompleteDay, latestSnapshots, type EtfFlowTable, type FlowWindow } from "./etf-flows";
@@ -115,6 +115,8 @@ export interface DashboardData {
   etf: EtfData;
   refresh: ReturnType<typeof getRefreshState>;
   refreshMode: "inprocess" | "external";
+  /** Last day of Hyperliquid revenue taken from the one-time history seed (null = none). */
+  hlRevenueSeededThrough: Day | null;
   hasData: boolean;
 }
 
@@ -188,14 +190,15 @@ async function safe<T>(key: string, p: Promise<T>, timeoutMs = 8000): Promise<T 
 }
 
 export async function getDashboardData(): Promise<DashboardData> {
-  const [hl, lighter, llama, etfStore] = await Promise.all([
+  const [hl, lighter, hlRev, etfStore] = await Promise.all([
     readStore<HlStore>("hyperliquid"),
     readStore<LighterStore>("lighter"),
-    readStore<LlamaStore>("defillama"),
+    readStore<HlRevenueStore>("hl-revenue"),
     readStore<EtfStore>("etf-eth"),
   ]);
+  const hlRevenue = hlRevenueSeries(hlRev);
 
-  const newest = Math.max(...[hl, lighter, llama].map((s) => (s ? Date.parse(s.updatedAt) : 0)));
+  const newest = Math.max(...[hl, lighter, hlRev].map((s) => (s ? Date.parse(s.updatedAt) : 0)));
   if (refreshMode() === "inprocess" && process.env.FINDASH_AUTO_REFRESH !== "0" && Date.now() - newest > STALE_MS && !getRefreshState().running) {
     void startRefresh();
   }
@@ -221,11 +224,11 @@ export async function getDashboardData(): Promise<DashboardData> {
         [
           { name: "Perps", days: pick(hl?.days, "perps") },
           { name: "HIP-3 perps", days: pick(hl?.days, "hip3") },
-          { name: "Spot", days: llama?.hlSpotVolume ?? {} },
+          { name: "Spot", days: pick(hl?.days, "spot") },
         ],
         windows, asOf, chartFrom,
       ),
-      revenue: block([{ name: "Revenue", days: llama?.hlRevenue ?? {} }], windows, asOf, chartFrom),
+      revenue: block([{ name: "Revenue", days: hlRevenue.days }], windows, asOf, chartFrom),
       live24h: liveHl
         ? { volume: liveHl.perps + liveHl.hip3 + liveHl.spot, parts: [{ name: "Perps", value: liveHl.perps }, { name: "HIP-3", value: liveHl.hip3 }, { name: "Spot", value: liveHl.spot }] }
         : { volume: null, parts: [] },
@@ -242,7 +245,7 @@ export async function getDashboardData(): Promise<DashboardData> {
         ],
         windows, asOf, chartFrom,
       ),
-      revenue: block([{ name: "Revenue", days: llama?.lighterRevenue ?? {} }], windows, asOf, chartFrom),
+      revenue: block([{ name: "Revenue", days: lighter?.revenue ?? {} }], windows, asOf, chartFrom),
       live24h: liveLighter
         ? { volume: liveLighter.main + liveLighter.robinhood, parts: [{ name: "Lighter", value: liveLighter.main }, { name: "Robinhood", value: liveLighter.robinhood }] }
         : { volume: null, parts: [] },
@@ -269,6 +272,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     etf: buildEtfData(etfStore),
     refresh: getRefreshState(),
     refreshMode: refreshMode(),
-    hasData: !!(hl && lighter && llama),
+    hlRevenueSeededThrough: hlRevenue.seededThrough,
+    hasData: !!(hl && lighter && hlRev),
   };
 }

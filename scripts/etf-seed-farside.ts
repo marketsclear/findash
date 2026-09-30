@@ -27,8 +27,9 @@ async function main() {
   if (parts.length === 0) throw new Error("no farside-seed.part-*.json files in data/");
   const seed = { capturedAt: "", want: [] as string[], out: [] as (string | number | null)[][] };
   for (const f of parts) {
-    const p = JSON.parse(await readFile(path.join(dir, f), "utf8")) as typeof seed;
-    seed.capturedAt = p.capturedAt;
+    const raw = JSON.parse(await readFile(path.join(dir, f), "utf8")) as { capturedAt: string; body?: typeof seed } & typeof seed;
+    const p = raw.body ?? raw; // older parts stored the payload at the top level
+    seed.capturedAt = raw.capturedAt;
     seed.want = p.want;
     seed.out.push(...p.out);
   }

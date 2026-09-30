@@ -1,6 +1,6 @@
 import { readStore, writeStore } from "./store";
-import { collectDefiLlama, LlamaStore } from "./sources/defillama";
 import { collectHyperliquid, HlStore } from "./sources/hyperliquid";
+import { collectHlRevenue, HlRevenueStore } from "./sources/hyperliquid-revenue";
 import { collectLighter, LighterStore } from "./sources/lighter";
 import { collectEtf, EtfStore } from "./sources/etf";
 
@@ -44,7 +44,7 @@ export function startRefresh(logger: (msg: string) => void = () => {}, scope: "d
       jobs.push(
         readStore<HlStore>("hyperliquid").then((prev) => collectHyperliquid(prev, log)).then((s) => writeStore("hyperliquid", s)),
         readStore<LighterStore>("lighter").then((prev) => collectLighter(prev, log)).then((s) => writeStore("lighter", s)),
-        collectDefiLlama(log).then((s: LlamaStore) => writeStore("defillama", s)),
+        readStore<HlRevenueStore>("hl-revenue").then((prev) => collectHlRevenue(prev, log)).then((s) => writeStore("hl-revenue", s)),
       );
     }
     if (scope !== "dex") {

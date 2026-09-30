@@ -57,11 +57,12 @@ export default async function Page() {
             </dd>
             <dt>Prices</dt>
             <dd className="tabular-nums">
-              LIT ${data.valuation.lit.price.toFixed(2)} · HYPE ${data.valuation.hype.price.toFixed(2)} · CoinGecko, {fmtTime(data.valuation.hype.updatedAt)}
+              LIT ${data.valuation.lit.price.toFixed(2)} ({data.valuation.lit.priceSource}) · HYPE ${data.valuation.hype.price.toFixed(2)} ({data.valuation.hype.priceSource}) ·{" "}
+              {fmtTime(data.valuation.hype.updatedAt)}
             </dd>
           </dl>
         ) : (
-          <span className="text-sm text-muted">Token prices unavailable (CoinGecko lookup failed)</span>
+          <span className="text-sm text-muted">Token prices unavailable (price or supply lookup failed)</span>
         )}
       </section>
 
@@ -115,16 +116,23 @@ export default async function Page() {
 
       <footer className="mt-8 space-y-1 text-xs text-muted">
         <p>
-          Volume: Hyperliquid perps (incl. HIP-3 builder markets) from the Hyperliquid candle API, spot from DefiLlama; Lighter perps, spot and the Robinhood
-          deployment from the Lighter candle API. Live 24h is the exchanges&apos; own rolling figure. Volume is single-sided notional (it matches
-          Hyperliquid&apos;s own 24h figure); Hyperliquid&apos;s stats site counts both sides of each trade and therefore shows about twice these numbers.
+          Volume, from each exchange&apos;s own data: Hyperliquid perps, HIP-3 builder markets and spot from Hyperliquid&apos;s candle API; Lighter from
+          Lighter&apos;s exchange-metrics API (daily volume per deployment, including the Robinhood deployment; spot from per-market volume). Live 24h is each
+          exchange&apos;s own rolling figure. Volume is single-sided notional, the same convention as Hyperliquid&apos;s stats site.
         </p>
         <p>
-          Revenue: DefiLlama protocol revenue. Hyperliquid = fee share routed to the Assistance Fund (excludes builder and HIP-3 deployer fees). Lighter =
-          maker/taker/transfer/withdraw fees kept by the protocol (excludes liquidation fees paid to the LLP).
+          Revenue: Hyperliquid = USD the Assistance Fund spends buying back HYPE, from the fund&apos;s own fills on Hyperliquid (deployment-auction burns,
+          about 0.4%, are not included)
+          {data.hlRevenueSeededThrough
+            ? `; up to ${fmtDay(data.hlRevenueSeededThrough, { year: true })} from a one-time copy of the buyback series on Hyperliquid's stats site, which matches the fund's fills to the dollar`
+            : ""}
+          . Lighter = maker, taker, transfer and withdrawal fees the protocol keeps, from Lighter&apos;s metrics API (liquidation fees go to the LLP insurance fund
+          and are excluded).
         </p>
         <p>
-          Valuations: CoinGecko. FDV uses each token&apos;s total supply (HYPE ~955M of a 1B max, LIT 1B); circulating market cap uses circulating supply. LIT
+          Valuations: HYPE price and supply from Hyperliquid (total supply about 999M of a 1B max, including HYPE held by the Assistance Fund); LIT price from
+          Lighter&apos;s LIT/USDC market; LIT supply from CoinGecko, since Lighter publishes none (1B total, 250M unlocked). FDV uses total supply, market cap
+          circulating supply. LIT
           fair value applies HYPE&apos;s valuation-to-revenue multiple to Lighter&apos;s revenue over the monthly window (last 30 complete UTC days): HYPE
           valuation × Lighter revenue / Hyperliquid revenue, divided by LIT supply. It assumes equal multiples and ignores differences in growth, token
           unlocks and how each protocol returns revenue to holders.

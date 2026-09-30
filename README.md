@@ -1,7 +1,7 @@
 # findash
 
 Personal financial dashboard. First module: a perp-DEX monitor showing daily, weekly, monthly,
-year-to-date and yearly **volume** and **revenue** for Hyperliquid and Lighter, with period-over-period
+year-to-date and yearly **volume** and **revenue** for Hyperliquid and Lighter, from the exchanges' own data, with period-over-period
 deltas, live 24h volume and daily charts.
 
 ## Run
@@ -77,18 +77,30 @@ route redirects to `/login` until the password has been entered once (90-day coo
 
 ## Data sources
 
+Everything in the perp-DEX section comes from the exchanges themselves, except LIT's token supply
+(Lighter publishes none).
+
 | Metric | Hyperliquid | Lighter |
 |---|---|---|
-| Perps volume | `api.hyperliquid.xyz/info` `candleSnapshot`, base volume × OHLC/4 per candle, main universe + HIP-3 dexes. Hourly candles for the last 60 days, daily candles before that. | `mainnet.zklighter.elliot.ai/api/v1/candles` (`resolution=1d`, `V` is USD) for every market, plus the Robinhood deployment at `api.rh.lighter.xyz`. |
-| Spot volume | DefiLlama `summary/dexs/hyperliquid` | Included in the candle sweep (spot markets have ids ≥ 2048). |
-| Revenue | DefiLlama `summary/fees/hyperliquid?dataType=dailyRevenue` | DefiLlama `summary/fees/lighter?dataType=dailyRevenue` |
-| Token valuation | CoinGecko `coins/markets` (HYPE) | CoinGecko `coins/markets` (LIT) |
+| Volume | `api.hyperliquid.xyz/info` `candleSnapshot` for every perp (main + HIP-3 dexes) and spot market, base volume × OHLC/4 per candle; hourly candles for recent days, daily candles for older history. All spot pairs are quoted in USD stablecoins. | `exchangeMetrics?kind=volume` per deployment (main exchange + Robinhood deployment at `api.rh.lighter.xyz`); spot = `filter=byMarket` volume of the spot order books, perps = the rest. Full daily history in one request each. |
+| Revenue | USD the Assistance Fund (`0xfefe…fefe`) spends buying HYPE, per UTC day, from its fills (`userFillsByTime`). History before the first collection: one-time seed of the "HyperCore Buybacks" series on Hyperliquid's stats site, which matches the fills to the cent. | `exchangeMetrics` maker + taker + transfer + withdrawal fees on both deployments (fees the protocol keeps; liquidation fees go to the LLP and are stored separately). |
+| Token price | Hyperliquid spot (`tokenDetails` mid) | Lighter LIT/USDC last trade |
+| Token supply | Hyperliquid `tokenDetails` (total / circulating, live) | CoinGecko (1B total, 250M unlocked as of Sep 2026) |
 | Live 24h volume | `metaAndAssetCtxs` `dayNtlVlm` summed (perps, HIP-3 dexes, spot) | `exchangeStats.daily_usd_volume` (both deployments) |
 
-DefiLlama's perps-volume endpoints are behind their paid plan, which is why volume is computed
-from the exchanges' own candle APIs. The candle method was checked against Hyperliquid's own
-rolling-24h notional: hourly candles agree to ~0.01%, daily candles to within a few percent per
-market on volatile days.
+Volume is single-sided notional, the convention of Hyperliquid's stats site.
+
+**Verification (30 Sep 2026).** Hyperliquid perps + HIP-3 volume matched Hyperliquid's official stats
+series (hyperscreener.asxn.xyz, the backend behind stats.hyperliquid.xyz) within 0.3% for every
+dashboard window and every month since mid-2025. Lighter's exchange metrics are Lighter's own
+series; the earlier per-market candle sweep ran 0.1-0.2% below them. DefiLlama was dropped as a source:
+its Hyperliquid indexer loses data on some days (on 11 Sep 2026 it showed 40% of the day's volume and
+revenue), which understated Hyperliquid revenue by ~14% for the latest week. Hyperliquid's own
+official daily files on `d2v1fiwobg9w6.cloudfront.net` stopped updating on 3 Apr 2026.
+
+**Operational limit.** Hyperliquid serves only a user's recent fills (about two weeks for the
+Assistance Fund), so the collector must run at least weekly or revenue days go missing; the
+collector logs a warning when its window no longer reaches back far enough.
 
 Lighter is also shown as a percentage of Hyperliquid: per window for volume and revenue (with the
 change in percentage points), as a daily share chart, and as a headline figure for LIT FDV / HYPE FDV
@@ -104,7 +116,7 @@ covered by data.
 ## Layout
 
 ```
-lib/sources/     one collector per upstream (hyperliquid, lighter, defillama)
+lib/sources/     one collector per upstream (hyperliquid volume, hyperliquid-revenue, lighter, valuation, etf/)
 lib/collect.ts   runs all collectors, one refresh at a time (shared via globalThis)
 lib/store.ts     JSON file cache under data/
 lib/metrics.ts   window definitions and sums
