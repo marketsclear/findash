@@ -11,7 +11,7 @@ import path from "node:path";
 import type { EtfStore } from "../lib/sources/etf";
 import { readStore, writeStore } from "../lib/store";
 
-const SEED_FUNDS = ["FETH", "ETHW", "ETHV", "QETH", "EZET"];
+const SEED_FUNDS = ["FETH", "ETHW", "ETHV", "QETH", "EZET", "MSSE"];
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 
 function day(s: string): string | null {

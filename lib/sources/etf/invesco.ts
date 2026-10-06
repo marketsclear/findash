@@ -19,7 +19,6 @@ export const qeth: FundAdapter = {
   method: "shares",
   history: false,
   sharesLag: 1,
-  lagUnverified: true,
   async fetch() {
     const [p, d] = await impersonateFetch([
       { url: `${BASE}/prices?idType=cusip&variationType=priceListing&productType=ETF&productSubType=ETF-Non-40%20Act`, headers },

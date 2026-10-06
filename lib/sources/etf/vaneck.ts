@@ -13,7 +13,6 @@ export const ethv: FundAdapter = {
   method: "eth",
   history: false,
   sharesLag: 1,
-  lagUnverified: true,
   async fetch() {
     const data = await fetchJson<{ AsOfDate: string; Holdings: { HoldingName: string; Shares: string; MV: string; AsOfDate: string }[] }>(
       "https://www.vaneck.com/Main/HoldingsBlock/GetDataset/?blockId=348326&pageId=280216&ticker=ETHV",

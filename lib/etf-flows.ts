@@ -56,10 +56,14 @@ function derivedFlows(fund: EtfFundStore): FundFlow[] {
   return out;
 }
 
-/** Implied ether price for a snapshot: AUM per ether, or NAV per ether-per-share. */
+/**
+ * Implied ether price for a snapshot. NAV / ether-per-share is exact when the issuer publishes both
+ * (Fidelity); AUM / ether is the fallback (VanEck). Fidelity's AUM is derived from a stale share count,
+ * which put its flows 2-7% off Farside until 7 Oct 2026; with NAV / ether-per-share they match to rounding.
+ */
 function ethPrice(s: FundSnapshot): number | undefined {
-  if (s.aum !== undefined && s.eth) return s.aum / s.eth;
   if (s.nav !== undefined && s.ethPerShare) return s.nav / s.ethPerShare;
+  if (s.aum !== undefined && s.eth) return s.aum / s.eth;
   return undefined;
 }
 

@@ -36,7 +36,7 @@ price). Windows sum the total over calendar periods ending on the latest reporte
 | ETHW | Bitwise | fund page (server-rendered) | from first collection |
 | ETHV | VanEck | holdings dataset JSON behind the fund page (needs the cookie-consent cookie) | from first collection |
 | EZET | Franklin Templeton | fund page rendered in headless Chromium | from first collection |
-| MSSE | Morgan Stanley | product-page JSON (pricing + trade-date holdings), fetched with a Chrome TLS fingerprint; listed 28 Jul 2026, not on Farside | from first collection |
+| MSSE | Morgan Stanley | product-page JSON (pricing + trade-date holdings), fetched with a Chrome TLS fingerprint; listed 28 Jul 2026 | from first collection (history before 9 Sep seeded from Farside) |
 | FETH | Fidelity | institutional research quote API (page → CSRF token → quote), fetched with a Chrome TLS fingerprint; flow from ether held, since the published share count lags by days | from first collection |
 
 Fidelity and Invesco sit behind Akamai bot management, which scores the TLS handshake; `scripts/impersonate_fetch.py`
@@ -57,8 +57,15 @@ the day, then 01:00, 06:00, 11:00 and 19:00 UTC), matching when the issuers publ
 22:30 UTC, Franklin ~00:20, Invesco ~04:00, Morgan Stanley ~05:30, VanEck ~10:15, Bitwise later in
 the US day. Third-party tables (Farside) have the same numbers by ~07:00 UTC from vendor settlement
 feeds, so the dashboard trails them by up to a day for the latest row. A failing issuer keeps its previous rows and shows a
-"!" marker in the section footer. The share-count lag for issuers without history is an assumption
-until verified against an independent table (`lagUnverified` in the adapters).
+"!" marker in the section footer.
+
+Timing, verified against Farside on 7 Oct 2026 (215 of 222 fund-days since the feeds started match
+within $0.15M; the rest are within a creation unit or awaiting the issuer's next publication):
+iShares, Grayscale, VanEck, Invesco and Franklin publish counts that include the *previous* trading
+day's creations (`sharesLag: 1`); 21Shares and Morgan Stanley include the same day's (`sharesLag: 0`).
+Bitwise's "Data as of" date is the business day before the trade date it reflects, so ETHW snapshots
+are dated to the next NYSE trading day. Fidelity's flows are priced at NAV / ether-per-share; its
+published share count is stale and was skewing flows by 2-7% before that fix.
 
 ## Deploying (Vercel + Neon + GitHub Actions)
 

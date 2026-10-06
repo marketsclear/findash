@@ -9,7 +9,6 @@ export const ezet: FundAdapter = {
   method: "shares",
   history: false,
   sharesLag: 1,
-  lagUnverified: true,
   browser: true,
   async fetch() {
     const ctx = await browserContext();

@@ -6,6 +6,8 @@ import { FundAdapter, num, toDay } from "./types";
  * JSON documents; pricing carries NAV, its date and shares outstanding, the trade-date holdings file the
  * ether quantity and market value. The site refuses non-browser TLS fingerprints, so requests go
  * through the impersonating helper. Latest day only (a NAV history chart exists, but no share history).
+ * The share count dated to a NAV date already includes that day's creations (lag 0; verified against
+ * Farside, 17 of 18 days 9 Sep - 2 Oct 2026, the other within a creation unit).
  */
 const BASE = "https://www.morganstanley.com/im/json/imwebdata/data/product/EF/100770";
 
@@ -22,8 +24,7 @@ export const msse: FundAdapter = {
   issuer: "Morgan Stanley",
   method: "shares",
   history: false,
-  sharesLag: 1,
-  lagUnverified: true,
+  sharesLag: 0,
   async fetch() {
     const [p, h] = await impersonateFetch([
       { url: `${BASE}/detail/en-pricing.json`, headers: { accept: "application/json" } },
