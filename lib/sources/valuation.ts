@@ -1,16 +1,13 @@
-import { fetchJson } from "../http";
 import { hypeTokenDetails } from "./hyperliquid";
 import { litPriceOnLighter } from "./lighter";
+import type { SupplyStore } from "./supply";
 
 /**
- * Token valuations, first-party where the exchanges publish the data:
- *  - HYPE: price and supply from Hyperliquid's own token details (live; includes the HYPE the
- *    Assistance Fund holds, which Hyperliquid counts in total and circulating supply).
- *  - LIT: price from Lighter's LIT/USDC spot market. Lighter publishes no supply endpoint, so LIT's
- *    total and circulating supply come from CoinGecko (1B total, 250M unlocked as of Sep 2026).
+ * Token valuations: live prices from the exchanges (HYPE mid on Hyperliquid spot, LIT last trade on
+ * Lighter's LIT/USDC market) applied to the stored supply figures (see supply.ts for their sources).
+ * No third-party data.
  */
 const CACHE_MS = 60_000;
-const CG_LIT = "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=lighter";
 
 export interface TokenValuation {
   id: string;
@@ -20,48 +17,56 @@ export interface TokenValuation {
   fdv: number;
   circulatingSupply: number;
   totalSupply: number;
+  /** Tokens permanently removed (subtracted from totalSupply). */
+  burned: number;
+  /** Repurchased tokens the protocol holds without burning (inside totalSupply, outside circulating). */
+  heldByProtocol: number;
+  circulatingIsEstimate: boolean;
   updatedAt: string;
-  /** Where price and supply came from, for the page footnote. */
+  supplyAsOf: string;
   priceSource: string;
   supplySource: string;
 }
 
 const g = globalThis as unknown as { __findashVal?: { at: number; data: Record<string, TokenValuation> } };
 
-export async function fetchValuations(): Promise<Record<string, TokenValuation>> {
+export async function fetchValuations(supply: SupplyStore): Promise<Record<string, TokenValuation>> {
   if (g.__findashVal && Date.now() - g.__findashVal.at < CACHE_MS) return g.__findashVal.data;
-  const [hype, litPrice, cg] = await Promise.all([
-    hypeTokenDetails(),
-    litPriceOnLighter(),
-    fetchJson<{ circulating_supply: number; total_supply: number }[]>(CG_LIT, {}, { retries: 1, timeoutMs: 8000 }),
-  ]);
-  const lit = cg[0];
-  if (!lit?.total_supply || !lit.circulating_supply) throw new Error("CoinGecko: LIT supply missing");
+  const [hype, litPrice] = await Promise.all([hypeTokenDetails(), litPriceOnLighter()]);
   const now = new Date().toISOString();
+  const { lit, hype: h } = supply;
   const data: Record<string, TokenValuation> = {
     hyperliquid: {
       id: "hyperliquid",
       symbol: "HYPE",
       price: hype.price,
-      marketCap: hype.price * hype.circulatingSupply,
-      fdv: hype.price * hype.totalSupply,
-      circulatingSupply: hype.circulatingSupply,
-      totalSupply: hype.totalSupply,
+      marketCap: hype.price * h.circulatingSupply,
+      fdv: hype.price * h.totalSupply,
+      circulatingSupply: h.circulatingSupply,
+      totalSupply: h.totalSupply,
+      burned: h.burned,
+      heldByProtocol: h.assistanceFund,
+      circulatingIsEstimate: false,
       updatedAt: now,
+      supplyAsOf: supply.updatedAt,
       priceSource: "Hyperliquid spot",
-      supplySource: "Hyperliquid",
+      supplySource: "Hyperliquid token record",
     },
     lighter: {
       id: "lighter",
       symbol: "LIT",
       price: litPrice,
-      marketCap: litPrice * lit.circulating_supply,
-      fdv: litPrice * lit.total_supply,
-      circulatingSupply: lit.circulating_supply,
-      totalSupply: lit.total_supply,
+      marketCap: litPrice * lit.circulatingEstimate,
+      fdv: litPrice * lit.totalSupply,
+      circulatingSupply: lit.circulatingEstimate,
+      totalSupply: lit.totalSupply,
+      burned: lit.burned,
+      heldByProtocol: lit.treasuryHeld,
+      circulatingIsEstimate: true,
       updatedAt: now,
+      supplyAsOf: supply.updatedAt,
       priceSource: "Lighter LIT/USDC",
-      supplySource: "CoinGecko",
+      supplySource: "Ethereum contract, net of burns",
     },
   };
   g.__findashVal = { at: Date.now(), data };

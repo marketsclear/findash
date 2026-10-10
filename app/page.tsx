@@ -4,7 +4,7 @@ import { ExchangeCard } from "@/components/ExchangeCard";
 import { RatioCard } from "@/components/RatioCard";
 import { RefreshButton } from "@/components/RefreshButton";
 import { getDashboardData } from "@/lib/dashboard";
-import { fmtDay, fmtPct, fmtRange, fmtShare, fmtTime, fmtUsd } from "@/lib/format";
+import { fmtCompact, fmtDay, fmtPct, fmtRange, fmtShare, fmtTime, fmtUsd } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -55,10 +55,16 @@ export default async function Page() {
               <span className="font-semibold text-ink">{fmtShare(data.valuation.marketCapPct)}</span> · LIT {fmtUsd(data.valuation.lit.marketCap)} / HYPE{" "}
               {fmtUsd(data.valuation.hype.marketCap)}
             </dd>
+            <dt>Supply</dt>
+            <dd className="tabular-nums">
+              LIT {fmtCompact(data.valuation.lit.totalSupply)} total ({fmtCompact(data.valuation.lit.burned)} burned), ~{fmtCompact(data.valuation.lit.circulatingSupply, 0)} circulating (estimate) · HYPE{" "}
+              {fmtCompact(data.valuation.hype.totalSupply)} total, {fmtCompact(data.valuation.hype.circulatingSupply)} circulating, {fmtCompact(data.valuation.hype.heldByProtocol)} held by the
+              Assistance Fund
+            </dd>
             <dt>Prices</dt>
             <dd className="tabular-nums">
               LIT ${data.valuation.lit.price.toFixed(2)} ({data.valuation.lit.priceSource}) · HYPE ${data.valuation.hype.price.toFixed(2)} ({data.valuation.hype.priceSource}) ·{" "}
-              {fmtTime(data.valuation.hype.updatedAt)}
+              {fmtTime(data.valuation.hype.updatedAt)} · supply as of {fmtTime(data.valuation.lit.supplyAsOf)}
             </dd>
           </dl>
         ) : (
@@ -86,12 +92,12 @@ export default async function Page() {
             <dt>Fully diluted</dt>
             <dd className="tabular-nums">
               HYPE FDV {fmtUsd(data.valuation.hype.fdv)} × {fmtShare(data.fairValue.revenuePct)} = LIT FDV {fmtUsd(data.fairValue.fdv.impliedValuation)} ÷{" "}
-              {fmtUsd(data.valuation.lit.totalSupply).replace("$", "")} LIT
+              {fmtCompact(data.valuation.lit.totalSupply)} LIT
             </dd>
             <dt>Circulating basis</dt>
             <dd className="tabular-nums">
               <span className="font-semibold text-ink">${data.fairValue.marketCap.price.toFixed(2)}</span> ({fmtPct(data.fairValue.marketCap.upsidePct)}) · HYPE mcap{" "}
-              {fmtUsd(data.valuation.hype.marketCap)} × {fmtShare(data.fairValue.revenuePct)} ÷ {fmtUsd(data.valuation.lit.circulatingSupply).replace("$", "")} LIT
+              {fmtUsd(data.valuation.hype.marketCap)} × {fmtShare(data.fairValue.revenuePct)} ÷ {fmtCompact(data.valuation.lit.circulatingSupply, 0)} LIT (est.)
             </dd>
           </dl>
         </section>
@@ -130,9 +136,12 @@ export default async function Page() {
           and are excluded).
         </p>
         <p>
-          Valuations: HYPE price and supply from Hyperliquid (total supply about 999M of a 1B max, including HYPE held by the Assistance Fund); LIT price from
-          Lighter&apos;s LIT/USDC market; LIT supply from CoinGecko, since Lighter publishes none (1B total, 250M unlocked). FDV uses total supply, market cap
-          circulating supply. LIT
+          Valuations: prices from the exchanges (HYPE mid on Hyperliquid spot, LIT last trade on Lighter&apos;s LIT/USDC market). LIT total supply is read from
+          the Ethereum contract minus the LIT Lighter has burned (burns are transfers to the dead address, so the contract&apos;s own total stays at 1B). Lighter
+          publishes no circulating figure; the estimate is the 250M distributed at launch, minus burned and treasury-held LIT, plus staking rewards paid from the
+          ecosystem reserve (3.72M through June 2026 per Lighter, then a fixed 6% APR on the staked balance). HYPE total and circulating supply are Hyperliquid&apos;s
+          own figures: total = max minus burned; circulating excludes future emissions and named non-circulating wallets, including the Assistance Fund&apos;s
+          buybacks, which stay inside total supply (strict max-minus-burned definition for both tokens). FDV uses total supply, market cap circulating supply. LIT
           fair value applies HYPE&apos;s valuation-to-revenue multiple to Lighter&apos;s revenue over the monthly window (last 30 complete UTC days): HYPE
           valuation × Lighter revenue / Hyperliquid revenue, divided by LIT supply. It assumes equal multiples and ignores differences in growth, token
           unlocks and how each protocol returns revenue to holders.

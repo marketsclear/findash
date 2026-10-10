@@ -51,3 +51,13 @@ export function fmtSigned(v: number): string {
   if (v === 0) return "$0";
   return `${v > 0 ? "+" : "−"}${fmtUsd(Math.abs(v))}`;
 }
+
+/** Compact plain number: 981.9M, 47.9M, 1.00B. */
+export function fmtCompact(n: number | null | undefined, digits = 1): string {
+  if (n === null || n === undefined || !Number.isFinite(n)) return "–";
+  const abs = Math.abs(n);
+  if (abs >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
+  if (abs >= 1e6) return `${(n / 1e6).toFixed(digits)}M`;
+  if (abs >= 1e3) return `${(n / 1e3).toFixed(digits)}K`;
+  return n.toFixed(0);
+}

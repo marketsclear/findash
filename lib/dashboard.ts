@@ -5,6 +5,7 @@ import { HlStore, liveHyperliquid24h } from "./sources/hyperliquid";
 import { hlRevenueSeries, type HlRevenueStore } from "./sources/hyperliquid-revenue";
 import { LighterStore, liveLighter24h } from "./sources/lighter";
 import { fetchValuations, TokenValuation } from "./sources/valuation";
+import { collectSupply, type SupplyStore } from "./sources/supply";
 import { readStore } from "./store";
 import type { EtfStore } from "./sources/etf";
 import { flowTable, flowWindows, latestCompleteDay, latestSnapshots, type EtfFlowTable, type FlowWindow } from "./etf-flows";
@@ -108,7 +109,7 @@ export interface DashboardData {
   exchanges: ExchangeData[];
   /** Lighter relative to Hyperliquid. */
   ratio: RatioData;
-  /** Live token valuations (CoinGecko); null when the lookup failed. */
+  /** Token valuations (live prices on stored supply); null when a lookup failed. */
   valuation: ValuationData | null;
   /** LIT fair value at Hyperliquid's revenue multiple; null without prices or revenue data. */
   fairValue: FairValueData | null;
@@ -190,11 +191,12 @@ async function safe<T>(key: string, p: Promise<T>, timeoutMs = 8000): Promise<T 
 }
 
 export async function getDashboardData(): Promise<DashboardData> {
-  const [hl, lighter, hlRev, etfStore] = await Promise.all([
+  const [hl, lighter, hlRev, etfStore, supplyStore] = await Promise.all([
     readStore<HlStore>("hyperliquid"),
     readStore<LighterStore>("lighter"),
     readStore<HlRevenueStore>("hl-revenue"),
     readStore<EtfStore>("etf-eth"),
+    readStore<SupplyStore>("supply"),
   ]);
   const hlRevenue = hlRevenueSeries(hlRev);
 
@@ -208,7 +210,13 @@ export async function getDashboardData(): Promise<DashboardData> {
   const windows = windowsEnding(asOf);
   const chartFrom = addDays(asOf, -729);
 
-  const [liveHl, liveLighter, tokens] = await Promise.all([safe("hl24h", liveHyperliquid24h(), 12_000), safe("lighter24h", liveLighter24h()), safe("valuations", fetchValuations())]);
+  // Supply comes from the collector's store; before the first collection, read it live.
+  const supply = supplyStore ?? (await safe("supply", collectSupply(), 15_000));
+  const [liveHl, liveLighter, tokens] = await Promise.all([
+    safe("hl24h", liveHyperliquid24h(), 12_000),
+    safe("lighter24h", liveLighter24h()),
+    supply ? safe("valuations", fetchValuations(supply)) : Promise.resolve(null),
+  ]);
   const hype = tokens?.hyperliquid;
   const lit = tokens?.lighter;
   const valuation: ValuationData | null =

@@ -1,6 +1,7 @@
 import { readStore, writeStore } from "./store";
 import { collectHyperliquid, HlStore } from "./sources/hyperliquid";
 import { collectHlRevenue, HlRevenueStore } from "./sources/hyperliquid-revenue";
+import { collectSupply } from "./sources/supply";
 import { collectLighter, LighterStore } from "./sources/lighter";
 import { collectEtf, EtfStore } from "./sources/etf";
 
@@ -45,6 +46,7 @@ export function startRefresh(logger: (msg: string) => void = () => {}, scope: "d
         readStore<HlStore>("hyperliquid").then((prev) => collectHyperliquid(prev, log)).then((s) => writeStore("hyperliquid", s)),
         readStore<LighterStore>("lighter").then((prev) => collectLighter(prev, log)).then((s) => writeStore("lighter", s)),
         readStore<HlRevenueStore>("hl-revenue").then((prev) => collectHlRevenue(prev, log)).then((s) => writeStore("hl-revenue", s)),
+        collectSupply(log).then((s) => writeStore("supply", s)),
       );
     }
     if (scope !== "dex") {

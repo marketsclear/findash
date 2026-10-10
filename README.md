@@ -84,15 +84,15 @@ route redirects to `/login` until the password has been entered once (90-day coo
 
 ## Data sources
 
-Everything in the perp-DEX section comes from the exchanges themselves, except LIT's token supply
-(Lighter publishes none).
+Everything in the perp-DEX section comes from the exchanges themselves or the Ethereum chain. The
+one estimated figure is LIT's circulating supply, which Lighter does not publish (see below).
 
 | Metric | Hyperliquid | Lighter |
 |---|---|---|
 | Volume | `api.hyperliquid.xyz/info` `candleSnapshot` for every perp (main + HIP-3 dexes) and spot market, base volume × OHLC/4 per candle; hourly candles for recent days, daily candles for older history. All spot pairs are quoted in USD stablecoins. | `exchangeMetrics?kind=volume` per deployment (main exchange + Robinhood deployment at `api.rh.lighter.xyz`); spot = `filter=byMarket` volume of the spot order books, perps = the rest. Full daily history in one request each. |
 | Revenue | USD the Assistance Fund (`0xfefe…fefe`) spends buying HYPE, per UTC day, from its fills (`userFillsByTime`). History before the first collection: one-time seed of the "HyperCore Buybacks" series on Hyperliquid's stats site, which matches the fills to the cent. | `exchangeMetrics` maker + taker + transfer + withdrawal fees on both deployments (fees the protocol keeps; liquidation fees go to the LLP and are stored separately). |
 | Token price | Hyperliquid spot (`tokenDetails` mid) | Lighter LIT/USDC last trade |
-| Token supply | Hyperliquid `tokenDetails` (total / circulating, live) | CoinGecko (1B total, 250M unlocked as of Sep 2026) |
+| Token supply | Hyperliquid `tokenDetails`: total = max − burned (998.9M), circulating per Hyperliquid's definition (302M; excludes future emissions and the Assistance Fund's 47.9M of buybacks, which stay in total) | Ethereum contract `totalSupply()` − balance of the dead address (Lighter burns by transfer, so the contract still says 1B; 18.09M burned as of 10 Oct 2026 → 981.9M). Circulating is estimated: 250M at launch − burned − treasury-held + staking rewards (3.72M to Jun 2026 per Lighter, then 6% APR on the staked balance) |
 | Live 24h volume | `metaAndAssetCtxs` `dayNtlVlm` summed (perps, HIP-3 dexes, spot) | `exchangeStats.daily_usd_volume` (both deployments) |
 
 Volume is single-sided notional, the convention of Hyperliquid's stats site.
@@ -104,6 +104,11 @@ series; the earlier per-market candle sweep ran 0.1-0.2% below them. DefiLlama w
 its Hyperliquid indexer loses data on some days (on 11 Sep 2026 it showed 40% of the day's volume and
 revenue), which understated Hyperliquid revenue by ~14% for the latest week. Hyperliquid's own
 official daily files on `d2v1fiwobg9w6.cloudfront.net` stopped updating on 3 Apr 2026.
+
+**Supply (10 Oct 2026).** CoinGecko's supply figures for both tokens were stale: LIT 250M circulating
+unchanged since launch despite two burns, HYPE total 955M and circulating 222M against Hyperliquid's own
+998.9M and 302M. Supply is now collected with the DEX data (`lib/sources/supply.ts`, store key
+`supply`) and CoinGecko is no longer used anywhere.
 
 **Operational limit.** Hyperliquid serves only a user's recent fills (about two weeks for the
 Assistance Fund), so the collector must run at least weekly or revenue days go missing; the
