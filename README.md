@@ -110,6 +110,14 @@ unchanged since launch despite two burns, HYPE total 955M and circulating 222M a
 998.9M and 302M. Supply is now collected with the DEX data (`lib/sources/supply.ts`, store key
 `supply`) and CoinGecko is no longer used anywhere.
 
+**Revenue parts (11 Oct 2026).** Every total is also shown as parts in the exchange cards, per
+window, with each part's share. Hyperliquid revenue = trading fees + stablecoin reserve yield (AQAv2
+payments, read from the Assistance Fund's ledger and attributed to the days the fund spends them, see
+`splitBuybacks`). Lighter revenue = main exchange + Robinhood deployment (fees Lighter reports in full
+but splits 50/50 with Robinhood; not used for buybacks as of Oct 2026). Lighter's Circle USDC
+yield-share (Feb 2026) is excluded: not routed to the protocol, amount undisclosed. All ratios and the
+fair value use the totals.
+
 **Operational limit.** Hyperliquid serves only a user's recent fills (about two weeks for the
 Assistance Fund), so the collector must run at least weekly or revenue days go missing; the
 collector logs a warning when its window no longer reaches back far enough.

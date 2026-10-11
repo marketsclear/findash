@@ -127,13 +127,22 @@ export default async function Page() {
           exchange&apos;s own rolling figure. Volume is single-sided notional, the same convention as Hyperliquid&apos;s stats site.
         </p>
         <p>
-          Revenue: Hyperliquid = USD the Assistance Fund spends buying back HYPE, from the fund&apos;s own fills on Hyperliquid. HYPE burned in deployment
-          auctions and as HyperEVM fees is not included (about 0.4% of revenue over the last 30 days, 1.8% over the last year)
+          Revenue: Hyperliquid = USD the Assistance Fund spends buying back HYPE, from the fund&apos;s own fills on Hyperliquid. Its parts are trading fees and
+          stablecoin reserve yield: since 26 Aug 2026 the USDC deployers pass about 90% of the cost-adjusted reserve yield on USDC held on Hyperliquid to the fund
+          (Aligned Quote Asset framework, AQAv2), roughly monthly, through a protocol address
+          {data.hlYieldPayments.length
+            ? `; ${data.hlYieldPayments.length === 1 ? "first" : "latest"} payment ${fmtUsd(data.hlYieldPayments[data.hlYieldPayments.length - 1].amount)} on ${fmtDay(data.hlYieldPayments[data.hlYieldPayments.length - 1].day, { year: true })}`
+            : ""}
+          . Each payment is attributed to the days the fund spends it, in proportion to that day&apos;s buybacks, so the parts always sum to the total. HYPE burned
+          in deployment auctions and as HyperEVM fees is not included (about 0.4% of revenue over the last 30 days, 1.8% over the last year)
           {data.hlRevenueSeededThrough
             ? `; up to ${fmtDay(data.hlRevenueSeededThrough, { year: true })} from a one-time copy of the buyback series on Hyperliquid's stats site, which matches the fund's fills to the dollar`
             : ""}
-          . Lighter = maker, taker, transfer and withdrawal fees the protocol keeps, from Lighter&apos;s metrics API (liquidation fees go to the LLP insurance fund
-          and are excluded).
+          . Lighter = maker, taker, transfer and withdrawal fees, from Lighter&apos;s metrics API (liquidation fees go to the LLP insurance fund and are excluded),
+          shown as the main exchange and the Robinhood deployment. Lighter reports the Robinhood fees in full, as here, but splits them 50/50 with Robinhood and has
+          not used them for LIT buybacks so far. Lighter&apos;s USDC reserve-yield agreement with Circle (Feb 2026) is not included: it is not routed to the protocol
+          (monthly buybacks equal main-exchange fees within 1%) and its amount is undisclosed. Window totals, the Lighter share and the LIT fair value all use the
+          totals.
         </p>
         <p>
           Valuations: prices from the exchanges (HYPE mid on Hyperliquid spot, LIT last trade on Lighter&apos;s LIT/USDC market). LIT total supply is read from

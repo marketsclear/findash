@@ -9,8 +9,12 @@ import { fetchJson, RateLimiter } from "../http";
  *    the rest. Checked on 30 Sep 2026: our earlier per-market candle sums ran 0.1-0.2% below this
  *    series, mostly because delisted markets drop out of the candle sweep.
  *  - revenue: maker + taker + transfer + withdrawal fees on both deployments, i.e. fees the protocol
- *    keeps. Liquidation fees go to the LLP insurance fund and are stored separately, not as revenue.
- *    This is the same definition DefiLlama uses, computed from the same source, without its gaps.
+ *    keeps, also stored per deployment. Liquidation fees go to the LLP insurance fund and are stored
+ *    separately, not as revenue. Lighter's own monthly updates report the Robinhood deployment's fees in
+ *    full although they are split 50/50 with Robinhood and (as of Oct 2026) not used for LIT buybacks;
+ *    the dashboard follows Lighter's reporting and shows the two deployments as parts. Lighter's USDC
+ *    reserve-yield agreement with Circle (Feb 2026) is not included: it is not routed to the protocol
+ *    (monthly buybacks equal main-exchange fees within 1%) and its amount is undisclosed.
  * Every run rewrites the whole history, so there is no backfill state to manage.
  */
 const DEPLOYMENTS = [
@@ -31,6 +35,8 @@ export interface LighterStore {
   days: Record<Day, LighterDay>;
   /** Protocol revenue per day (maker + taker + transfer + withdrawal fees, both deployments). */
   revenue: Record<Day, number>;
+  /** The same revenue split by deployment (zero-filled over the same days, so the parts sum to `revenue`). */
+  revenueByDeployment?: { main: Record<Day, number>; robinhood: Record<Day, number> };
   /** Liquidation fees per day, paid to the LLP; kept for reference, not counted as revenue. */
   liquidationFees: Record<Day, number>;
 }
@@ -69,10 +75,19 @@ export async function collectLighter(_existing: LighterStore | null, log: (msg: 
   for (const symbol of spotMarkets) add(spot, await metric(main.api, "volume", symbol));
 
   const revenue: Record<Day, number> = {};
+  const revenueByDeployment = { main: {} as Record<Day, number>, robinhood: {} as Record<Day, number> };
   const liquidationFees: Record<Day, number> = {};
   for (const d of DEPLOYMENTS) {
-    for (const kind of REVENUE_KINDS) add(revenue, await metric(d.api, kind));
+    for (const kind of REVENUE_KINDS) {
+      const m = await metric(d.api, kind);
+      add(revenue, m);
+      add(revenueByDeployment[d.id], m);
+    }
     add(liquidationFees, await metric(d.api, "liquidation_fee"));
+  }
+  for (const day of Object.keys(revenue)) {
+    revenueByDeployment.main[day] ??= 0;
+    revenueByDeployment.robinhood[day] ??= 0;
   }
 
   const days: Record<Day, LighterDay> = {};
@@ -83,7 +98,7 @@ export async function collectLighter(_existing: LighterStore | null, log: (msg: 
   }
   const sorted = Object.keys(days).sort();
   log(`lighter: ${sorted.length} days (${sorted[0]} to ${sorted[sorted.length - 1]}), ${spotMarkets.length} spot markets, revenue ${Object.keys(revenue).length} days`);
-  return { updatedAt: new Date().toISOString(), version: 2, spotMarkets, days, revenue, liquidationFees };
+  return { updatedAt: new Date().toISOString(), version: 2, spotMarkets, days, revenue, revenueByDeployment, liquidationFees };
 }
 
 /** Rolling 24h USD volume as reported by each deployment's exchangeStats. */

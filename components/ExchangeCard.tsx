@@ -1,4 +1,4 @@
-import type { ExchangeData } from "@/lib/dashboard";
+import type { ExchangeData, MetricBlock } from "@/lib/dashboard";
 import type { Window } from "@/lib/metrics";
 import { fmtPct, fmtRange, fmtUsd } from "@/lib/format";
 import type { WindowStat } from "@/lib/metrics";
@@ -24,6 +24,53 @@ function Cell({ stat, prevLabel }: { stat: WindowStat; prevLabel: string }) {
         <Delta stat={stat} prevLabel={prevLabel} />
       </div>
     </td>
+  );
+}
+
+/** The parts of each total, per window, with each part's share of its total. Totals stay in the table above. */
+function Parts({ ex, windows }: { ex: ExchangeData; windows: Window[] }) {
+  const groups: { label: string; block: MetricBlock }[] = [
+    { label: "Volume", block: ex.volume },
+    { label: "Revenue", block: ex.revenue },
+  ].filter((g) => g.block.parts.length > 1);
+  if (groups.length === 0) return null;
+  const cols = groups.flatMap((g) => g.block.parts.map((p) => ({ key: `${g.label}:${p.name}`, group: g.label, name: p.name, windows: p.windows, total: g.block.windows })));
+  return (
+    <div className="border-t border-grid">
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-muted">
+              <th className="px-4 py-2 text-left font-medium uppercase tracking-wide">Parts</th>
+              {cols.map((c) => (
+                <th key={c.key} className="px-2 py-2 text-right font-medium">
+                  <span className="block text-[10px] uppercase tracking-wide text-muted">{c.group}</span>
+                  <span className="text-ink-2">{c.name}</span>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {windows.map((w) => (
+              <tr key={w.key} className="border-t border-grid">
+                <th scope="row" className="whitespace-nowrap px-4 py-1.5 text-left font-normal text-ink-2">{w.label}</th>
+                {cols.map((c) => {
+                  const s = c.windows[w.key];
+                  const t = c.total[w.key].value;
+                  const share = s.value !== null && t ? (s.value / t) * 100 : null;
+                  return (
+                    <td key={c.key} className="whitespace-nowrap px-2 py-1.5 text-right tabular-nums">
+                      <span className="text-ink">{fmtUsd(s.value)}</span>
+                      {share !== null && <span className="ml-1 text-muted">{share.toFixed(0)}%</span>}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 
@@ -60,6 +107,7 @@ export function ExchangeCard({ ex, windows, color }: { ex: ExchangeData; windows
           ))}
         </tbody>
       </table>
+      <Parts ex={ex} windows={windows} />
     </section>
   );
 }

@@ -2,7 +2,7 @@ import { addDays, Day, eachDay, todayUtc } from "./days";
 import { getRefreshState, startRefresh } from "./collect";
 import { DailySeries, makeSeries, sumSeries, Window, windowsEnding, windowStat, WindowStat, WindowKey } from "./metrics";
 import { HlStore, liveHyperliquid24h } from "./sources/hyperliquid";
-import { hlRevenueSeries, type HlRevenueStore } from "./sources/hyperliquid-revenue";
+import { hlRevenueSeries, type HlRevenueStore, type YieldPayment } from "./sources/hyperliquid-revenue";
 import { LighterStore, liveLighter24h } from "./sources/lighter";
 import { fetchValuations, TokenValuation } from "./sources/valuation";
 import { collectSupply, type SupplyStore } from "./sources/supply";
@@ -19,6 +19,8 @@ export interface MetricBlock {
   windows: Record<WindowKey, WindowStat>;
   /** Named sub-series (perps / hip3 / spot ...) so the breakdown is visible in the table view. */
   segments: { name: string; days: Record<Day, number> }[];
+  /** The same sub-series summed per window (only when there is more than one). */
+  parts: { name: string; windows: Record<WindowKey, WindowStat> }[];
 }
 
 export interface ExchangeData {
@@ -118,6 +120,8 @@ export interface DashboardData {
   refreshMode: "inprocess" | "external";
   /** Last day of Hyperliquid revenue taken from the one-time history seed (null = none). */
   hlRevenueSeededThrough: Day | null;
+  /** Stablecoin reserve-yield payments the Assistance Fund has received (AQAv2), oldest first. */
+  hlYieldPayments: YieldPayment[];
   hasData: boolean;
 }
 
@@ -128,7 +132,14 @@ function block(segments: { name: string; days: Record<Day, number> }[], windows:
   const from = series.firstDay && series.firstDay > chartFrom ? series.firstDay : chartFrom;
   const through = series.lastDay && series.lastDay < asOf ? series.lastDay : asOf;
   const points = series.firstDay ? eachDay(from, through).map((day) => ({ day, value: total[day] ?? 0 })) : [];
-  return { points, windows: stats, segments };
+  const parts =
+    segments.length > 1
+      ? segments.map((seg) => {
+          const ser = makeSeries(seg.days);
+          return { name: seg.name, windows: Object.fromEntries(windows.map((w) => [w.key, windowStat(ser, w)])) as Record<WindowKey, WindowStat> };
+        })
+      : [];
+  return { points, windows: stats, segments, parts };
 }
 
 function pick<T>(days: Record<Day, T> | undefined, key: keyof T): Record<Day, number> {
@@ -236,7 +247,13 @@ export async function getDashboardData(): Promise<DashboardData> {
         ],
         windows, asOf, chartFrom,
       ),
-      revenue: block([{ name: "Revenue", days: hlRevenue.days }], windows, asOf, chartFrom),
+      revenue: block(
+        [
+          { name: "Trading fees", days: hlRevenue.parts.fees },
+          { name: "Stablecoin reserve yield", days: hlRevenue.parts.yield },
+        ],
+        windows, asOf, chartFrom,
+      ),
       live24h: liveHl
         ? { volume: liveHl.perps + liveHl.hip3 + liveHl.spot, parts: [{ name: "Perps", value: liveHl.perps }, { name: "HIP-3", value: liveHl.hip3 }, { name: "Spot", value: liveHl.spot }] }
         : { volume: null, parts: [] },
@@ -253,7 +270,15 @@ export async function getDashboardData(): Promise<DashboardData> {
         ],
         windows, asOf, chartFrom,
       ),
-      revenue: block([{ name: "Revenue", days: lighter?.revenue ?? {} }], windows, asOf, chartFrom),
+      revenue: block(
+        lighter?.revenueByDeployment
+          ? [
+              { name: "Lighter exchange", days: lighter.revenueByDeployment.main },
+              { name: "Robinhood deployment", days: lighter.revenueByDeployment.robinhood },
+            ]
+          : [{ name: "Revenue", days: lighter?.revenue ?? {} }],
+        windows, asOf, chartFrom,
+      ),
       live24h: liveLighter
         ? { volume: liveLighter.main + liveLighter.robinhood, parts: [{ name: "Lighter", value: liveLighter.main }, { name: "Robinhood", value: liveLighter.robinhood }] }
         : { volume: null, parts: [] },
@@ -281,6 +306,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     refresh: getRefreshState(),
     refreshMode: refreshMode(),
     hlRevenueSeededThrough: hlRevenue.seededThrough,
+    hlYieldPayments: hlRevenue.yieldPayments,
     hasData: !!(hl && lighter && hlRev),
   };
 }
