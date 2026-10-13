@@ -112,7 +112,6 @@ export default async function Page() {
 
       <ChartsSection
         asOf={data.asOf}
-        ratio={{ volume: data.ratio.volume.points, revenue: data.ratio.revenue.points }}
         exchanges={data.exchanges.map((e) => ({ id: e.id, name: e.name, color: COLORS[e.id], volume: e.volume.points, revenue: e.revenue.points }))}
       />
 
@@ -160,7 +159,11 @@ export default async function Page() {
           download, Grayscale product-performance workbooks, 21Shares API, Invesco product API, Bitwise and Franklin fund pages, VanEck holdings dataset,
           Fidelity institutional quote, Morgan Stanley product JSON. History since launch for ETHA, ETHB, ETHE, ETH and TETH; the others accumulate from the first collection.
         </p>
-        <p>Deltas compare each window with the preceding window of equal length; YTD compares with the same dates last year. Amounts in USD.</p>
+        <p>
+          Deltas compare each window with the preceding window of equal length; YTD compares with the same dates last year. Amounts in USD. The chart window
+          control shows the same windows over time: Weekly, Monthly and Yearly plot the total of the 7, 30 or 365 days ending on each day (only where the whole
+          window has data), YTD the total since 1 January, so the last point of a chart equals the card figure.
+        </p>
       </footer>
     </main>
   );

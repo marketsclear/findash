@@ -219,7 +219,7 @@ export async function getDashboardData(): Promise<DashboardData> {
   const today = todayUtc();
   const asOf = addDays(today, -1);
   const windows = windowsEnding(asOf);
-  const chartFrom = addDays(asOf, -729);
+  const chartFrom = "2000-01-01"; // charts get the full daily history; range and window are chosen client-side
 
   // Supply comes from the collector's store; before the first collection, read it live.
   const supply = supplyStore ?? (await safe("supply", collectSupply(), 15_000));
