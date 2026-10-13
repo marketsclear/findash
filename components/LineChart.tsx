@@ -26,6 +26,8 @@ export function LineChart({
   series,
   height = 260,
   format = fmtUsd,
+  hoverDay: hoverDayProp,
+  onHoverDay,
 }: {
   title: string;
   days: string[];
@@ -33,10 +35,20 @@ export function LineChart({
   height?: number;
   /** Formats values, ticks, labels and table cells. */
   format?: (v: number) => string;
+  /** Controlled hover (a day or null) so several panels can share one crosshair. */
+  hoverDay?: string | null;
+  onHoverDay?: (day: string | null) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(720);
-  const [hover, setHover] = useState<number | null>(null);
+  const [hoverState, setHoverState] = useState<number | null>(null);
+  const controlled = hoverDayProp !== undefined;
+  const hover = controlled ? (hoverDayProp === null ? null : (() => { const i = days.indexOf(hoverDayProp); return i >= 0 ? i : null; })()) : hoverState;
+  const setHover = (v: number | null | ((h: number | null) => number | null)) => {
+    const next = typeof v === "function" ? v(hover) : v;
+    if (!controlled) setHoverState(next);
+    onHoverDay?.(next === null ? null : days[next]);
+  };
 
   useEffect(() => {
     const el = ref.current;
@@ -125,7 +137,8 @@ export function LineChart({
     <div className="rounded-lg border border-border bg-surface p-4">
       <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="text-sm font-semibold">{title}</h3>
-        <ul className="flex gap-4 text-xs text-ink-2" aria-label="Legend">
+        {series.length > 1 && (
+          <ul className="flex gap-4 text-xs text-ink-2" aria-label="Legend">
           {series.map((s) => (
             <li key={s.id} className="flex items-center gap-1.5">
               <span className="inline-block h-0.5 w-4 rounded" style={{ background: s.color }} aria-hidden="true" />
@@ -133,6 +146,7 @@ export function LineChart({
             </li>
           ))}
         </ul>
+        )}
       </div>
       <div ref={ref} className="relative">
         {n === 0 ? (

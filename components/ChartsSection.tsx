@@ -27,6 +27,8 @@ export interface ChartRatio {
 
 export function ChartsSection({ exchanges, ratio, asOf }: { exchanges: ChartExchange[]; ratio: ChartRatio; asOf: string }) {
   const [range, setRange] = useState<(typeof RANGES)[number]["key"]>("90d");
+  // One crosshair for the per-exchange revenue panels.
+  const [hoverDay, setHoverDay] = useState<string | null>(null);
 
   const { days, volume, revenue, share } = useMemo(() => {
     const r = RANGES.find((x) => x.key === range)!;
@@ -63,7 +65,13 @@ export function ChartsSection({ exchanges, ratio, asOf }: { exchanges: ChartExch
         ))}
       </div>
       <LineChart title="Daily volume" days={days} series={volume} />
-      <LineChart title="Daily revenue" days={days} series={revenue} />
+      {/* Revenue differs by an order of magnitude between the two, so each exchange gets its own panel
+          and axis (never two scales on one plot); the panels share the date range and the crosshair. */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        {revenue.map((s) => (
+          <LineChart key={s.id} title={`Daily revenue · ${s.name}`} days={days} series={[s]} hoverDay={hoverDay} onHoverDay={setHoverDay} />
+        ))}
+      </div>
       <LineChart title="Lighter as % of Hyperliquid" days={days} series={share} format={(v) => fmtShare(v, Number.isInteger(v) ? 0 : 1)} />
     </div>
   );
