@@ -118,6 +118,12 @@ but splits 50/50 with Robinhood; not used for buybacks as of Oct 2026). Lighter'
 yield-share (Feb 2026) is excluded: not routed to the protocol, amount undisclosed. All ratios and the
 fair value use the totals.
 
+**Valuation metrics (27 Oct 2026).** A table under the valuation tiles: price, market cap, FDV;
+revenue (30d, 30d annualized, 12m, growth); P/E on FDV and market cap for both annualization bases;
+earnings yield; buybacks and buyback yield (Hyperliquid: Assistance Fund purchases; Lighter: the
+`buyback` metric in LIT valued at the day's LIT/USDC price, stored as `buybacks` in the Lighter store);
+take rate (revenue / volume, bps). Revenue totals include the parts; incentives are not deducted.
+
 **Operational limit.** Hyperliquid serves only a user's recent fills (about two weeks for the
 Assistance Fund), so the collector must run at least weekly or revenue days go missing; the
 collector logs a warning when its window no longer reaches back far enough.

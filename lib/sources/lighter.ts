@@ -1,4 +1,4 @@
-import { Day, dayFromMs } from "../days";
+import { Day, dayFromMs, eachDay } from "../days";
 import { fetchJson, RateLimiter } from "../http";
 
 /**
@@ -39,6 +39,11 @@ export interface LighterStore {
   revenueByDeployment?: { main: Record<Day, number>; robinhood: Record<Day, number> };
   /** Liquidation fees per day, paid to the LLP; kept for reference, not counted as revenue. */
   liquidationFees: Record<Day, number>;
+  /**
+   * LIT bought back by the treasury per day (Lighter's `buyback` metric, in LIT) and its USD value at
+   * that day's LIT/USDC daily price (OHLC/4 on Lighter's spot market). Buybacks began 30 Dec 2025.
+   */
+  buybacks?: Record<Day, { lit: number; usd: number }>;
 }
 
 interface OrderBook { market_id: number; market_type: "perp" | "spot"; symbol: string }
@@ -55,6 +60,26 @@ async function metric(api: string, kind: string, market?: string): Promise<Recor
   for (const m of res.metrics ?? []) {
     const day = dayFromMs(m.timestamp * 1000);
     out[day] = (out[day] ?? 0) + Number(m.data || 0);
+  }
+  return out;
+}
+
+interface DayCandle { t: number; o: number; h: number; l: number; c: number }
+
+/** LIT/USDC daily prices (OHLC/4) from `fromDay`, paging backwards (the API caps count_back at 500). */
+async function litDailyPrices(api: string, fromDay: Day): Promise<Record<Day, number>> {
+  const out: Record<Day, number> = {};
+  let end = Math.floor(Date.now() / 1000);
+  const fromSec = Math.floor(Date.parse(`${fromDay}T00:00:00Z`) / 1000);
+  for (let page = 0; page < 10; page++) {
+    await limiter.take();
+    const qs = new URLSearchParams({ market_id: "2049", resolution: "1d", start_timestamp: String(fromSec), end_timestamp: String(end), count_back: "500" });
+    const res = await fetchJson<{ c?: DayCandle[] }>(`${api}/candles?${qs}`);
+    const cs = res.c ?? [];
+    for (const c of cs) out[dayFromMs(c.t)] = (c.o + c.h + c.l + c.c) / 4;
+    if (cs.length < 500) break;
+    end = Math.floor(Math.min(...cs.map((c) => c.t)) / 1000) - 1;
+    if (end < fromSec) break;
   }
   return out;
 }
@@ -90,6 +115,20 @@ export async function collectLighter(_existing: LighterStore | null, log: (msg: 
     revenueByDeployment.robinhood[day] ??= 0;
   }
 
+  const buybackLit = await metric(main.api, "buyback");
+  const bbDays = Object.keys(buybackLit).sort();
+  let buybacks: LighterStore["buybacks"];
+  if (bbDays.length) {
+    const px = await litDailyPrices(main.api, bbDays[0]);
+    buybacks = {};
+    let lastPx = 0;
+    for (const day of eachDay(bbDays[0], bbDays[bbDays.length - 1])) {
+      if (px[day]) lastPx = px[day];
+      const lit = buybackLit[day] ?? 0;
+      buybacks[day] = { lit, usd: lit * lastPx };
+    }
+  }
+
   const days: Record<Day, LighterDay> = {};
   for (const day of new Set([...Object.keys(mainVolume), ...Object.keys(rhVolume)])) {
     const total = mainVolume[day] ?? 0;
@@ -97,8 +136,8 @@ export async function collectLighter(_existing: LighterStore | null, log: (msg: 
     days[day] = { perps: total - s, spot: s, robinhood: rhVolume[day] ?? 0 };
   }
   const sorted = Object.keys(days).sort();
-  log(`lighter: ${sorted.length} days (${sorted[0]} to ${sorted[sorted.length - 1]}), ${spotMarkets.length} spot markets, revenue ${Object.keys(revenue).length} days`);
-  return { updatedAt: new Date().toISOString(), version: 2, spotMarkets, days, revenue, revenueByDeployment, liquidationFees };
+  log(`lighter: ${sorted.length} days (${sorted[0]} to ${sorted[sorted.length - 1]}), ${spotMarkets.length} spot markets, revenue ${Object.keys(revenue).length} days, buybacks ${bbDays.length} days`);
+  return { updatedAt: new Date().toISOString(), version: 2, spotMarkets, days, revenue, revenueByDeployment, liquidationFees, buybacks };
 }
 
 /** Rolling 24h USD volume as reported by each deployment's exchangeStats. */

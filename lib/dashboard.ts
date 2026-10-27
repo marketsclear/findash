@@ -103,6 +103,94 @@ export interface FairValueData {
   marketCap: { impliedValuation: number; price: number; upsidePct: number };
 }
 
+/** One row of the valuation-metrics table; null = not computable (window not fully covered, or no data). */
+export interface ValuationMetricRow {
+  group: "Valuation" | "Revenue" | "Multiples" | "Yields" | "Efficiency";
+  label: string;
+  /** How the figure is computed, shown under the label. */
+  basis: string;
+  kind: "price" | "usd" | "multiple" | "pct" | "signedPct" | "bps";
+  hyperliquid: number | null;
+  lighter: number | null;
+}
+
+export interface ValuationMetricsData {
+  asOf: Day;
+  rows: ValuationMetricRow[];
+}
+
+const ANNUALIZE_30D = 365 / 30;
+
+/**
+ * Standard token valuation metrics on the same inputs as the rest of the page: live prices on stored
+ * supply, revenue and volume window totals (totals, including the parts). "Earnings" here is protocol
+ * revenue, i.e. what reaches the token through buybacks (Hyperliquid) or is kept by the protocol
+ * (Lighter); token incentives are not deducted. Trailing windows must be fully covered by data.
+ */
+function buildValuationMetrics(
+  valuation: ValuationData | null,
+  hl: ExchangeData,
+  li: ExchangeData,
+  lighterBuybacks: Record<Day, { lit: number; usd: number }> | null,
+  windows: Window[],
+  asOf: Day,
+): ValuationMetricsData | null {
+  if (!valuation) return null;
+  const full = (s: WindowStat) => (s.value !== null && !s.partial ? s.value : null);
+  const monthly = windows.find((w) => w.key === "monthly")!;
+  // Lighter buybacks only when the store covers the whole window (it begins 30 Dec 2025).
+  const bbDays = lighterBuybacks ? Object.keys(lighterBuybacks).sort() : [];
+  const bbCovers = bbDays.length > 0 && bbDays[0] <= monthly.start && bbDays[bbDays.length - 1] >= monthly.end;
+  const liBuyback30 = bbCovers ? eachDay(monthly.start, monthly.end).reduce((t, d) => t + (lighterBuybacks![d]?.usd ?? 0), 0) : null;
+  const per = (ex: ExchangeData, tok: TokenValuation, buyback30: number | null) => {
+    const rev30 = full(ex.revenue.windows.monthly), rev365 = full(ex.revenue.windows.yearly);
+    const vol30 = full(ex.volume.windows.monthly), vol365 = full(ex.volume.windows.yearly);
+    const ann30 = rev30 !== null ? rev30 * ANNUALIZE_30D : null;
+    const div = (a: number | null, b: number | null) => (a !== null && b !== null && b > 0 ? a / b : null);
+    return {
+      price: tok.price,
+      mcap: tok.marketCap,
+      fdv: tok.fdv,
+      rev30, ann30, rev365,
+      growth30: ex.revenue.windows.monthly.deltaPct,
+      peFdv30: div(tok.fdv, ann30), peFdv365: div(tok.fdv, rev365),
+      peMcap30: div(tok.marketCap, ann30), peMcap365: div(tok.marketCap, rev365),
+      eyMcap30: ann30 !== null ? (ann30 / tok.marketCap) * 100 : null,
+      eyFdv30: ann30 !== null ? (ann30 / tok.fdv) * 100 : null,
+      buyback30,
+      byMcap30: buyback30 !== null ? ((buyback30 * ANNUALIZE_30D) / tok.marketCap) * 100 : null,
+      take30: rev30 !== null && vol30 ? (rev30 / vol30) * 1e4 : null,
+      take365: rev365 !== null && vol365 ? (rev365 / vol365) * 1e4 : null,
+    };
+  };
+  // Hyperliquid revenue is, by construction, what the Assistance Fund spent on HYPE.
+  const h = per(hl, valuation.hype, full(hl.revenue.windows.monthly));
+  const l = per(li, valuation.lit, liBuyback30);
+  const row = (group: ValuationMetricRow["group"], label: string, basis: string, kind: ValuationMetricRow["kind"], key: keyof typeof h): ValuationMetricRow => ({ group, label, basis, kind, hyperliquid: h[key], lighter: l[key] });
+  return {
+    asOf,
+    rows: [
+      row("Valuation", "Price", "exchange spot price", "price", "price"),
+      row("Valuation", "Market cap", "price × circulating supply (LIT circulating is an estimate)", "usd", "mcap"),
+      row("Valuation", "Fully diluted valuation", "price × total supply net of burns", "usd", "fdv"),
+      row("Revenue", "Revenue, trailing 30 days", "window total, including parts", "usd", "rev30"),
+      row("Revenue", "Revenue, 30-day annualized", "trailing 30 days × 365/30", "usd", "ann30"),
+      row("Revenue", "Revenue, trailing 12 months", "trailing 365 days", "usd", "rev365"),
+      row("Revenue", "Revenue growth", "trailing 30 days vs the 30 days before", "signedPct", "growth30"),
+      row("Multiples", "P/E on FDV, 30-day annualized", "FDV ÷ 30-day annualized revenue", "multiple", "peFdv30"),
+      row("Multiples", "P/E on FDV, trailing 12 months", "FDV ÷ trailing 12-month revenue", "multiple", "peFdv365"),
+      row("Multiples", "P/E on market cap, 30-day annualized", "market cap ÷ 30-day annualized revenue", "multiple", "peMcap30"),
+      row("Multiples", "P/E on market cap, trailing 12 months", "market cap ÷ trailing 12-month revenue", "multiple", "peMcap365"),
+      row("Yields", "Earnings yield on market cap", "30-day annualized revenue ÷ market cap", "pct", "eyMcap30"),
+      row("Yields", "Earnings yield on FDV", "30-day annualized revenue ÷ FDV", "pct", "eyFdv30"),
+      row("Yields", "Buybacks, trailing 30 days", "Hyperliquid: Assistance Fund HYPE purchases; Lighter: treasury LIT purchases at the day's price", "usd", "buyback30"),
+      row("Yields", "Buyback yield on market cap", "30-day annualized buybacks ÷ market cap", "pct", "byMcap30"),
+      row("Efficiency", "Take rate, trailing 30 days", "revenue ÷ volume", "bps", "take30"),
+      row("Efficiency", "Take rate, trailing 12 months", "revenue ÷ volume", "bps", "take365"),
+    ],
+  };
+}
+
 export interface DashboardData {
   generatedAt: string;
   /** Last complete UTC day; every window ends here. */
@@ -116,6 +204,7 @@ export interface DashboardData {
   /** LIT fair value at Hyperliquid's revenue multiple; null without prices or revenue data. */
   fairValue: FairValueData | null;
   etf: EtfData;
+  valuationMetrics: ValuationMetricsData | null;
   refresh: ReturnType<typeof getRefreshState>;
   refreshMode: "inprocess" | "external";
   /** Last day of Hyperliquid revenue taken from the one-time history seed (null = none). */
@@ -293,6 +382,7 @@ export async function getDashboardData(): Promise<DashboardData> {
   };
 
   const fairValue = buildFairValue(valuation, lighterData.revenue.windows.monthly, hlData.revenue.windows.monthly);
+  const valuationMetrics = buildValuationMetrics(valuation, hlData, lighterData, lighter?.buybacks ?? null, windows, asOf);
 
   return {
     generatedAt: new Date().toISOString(),
@@ -303,6 +393,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     valuation,
     fairValue,
     etf: buildEtfData(etfStore),
+    valuationMetrics,
     refresh: getRefreshState(),
     refreshMode: refreshMode(),
     hlRevenueSeededThrough: hlRevenue.seededThrough,

@@ -2,6 +2,7 @@ import { ChartsSection } from "@/components/ChartsSection";
 import { EtfSection } from "@/components/EtfSection";
 import { ExchangeCard } from "@/components/ExchangeCard";
 import { RatioCard } from "@/components/RatioCard";
+import { ValuationMetrics } from "@/components/ValuationMetrics";
 import { RefreshButton } from "@/components/RefreshButton";
 import { getDashboardData } from "@/lib/dashboard";
 import { fmtCompact, fmtDay, fmtPct, fmtRange, fmtShare, fmtTime, fmtUsd } from "@/lib/format";
@@ -103,6 +104,12 @@ export default async function Page() {
         </section>
       )}
 
+      {data.valuationMetrics && (
+        <div className="mb-4">
+          <ValuationMetrics data={data.valuationMetrics} />
+        </div>
+      )}
+
       <div className="mb-8 grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
         {data.exchanges.map((ex) => (
           <ExchangeCard key={ex.id} ex={ex} windows={data.windows} color={COLORS[ex.id]} />
@@ -158,6 +165,13 @@ export default async function Page() {
           ETF flows: change in shares outstanding × NAV per issuer-reported day (VanEck: change in ether held × implied price). Sources: iShares fund
           download, Grayscale product-performance workbooks, 21Shares API, Invesco product API, Bitwise and Franklin fund pages, VanEck holdings dataset,
           Fidelity institutional quote, Morgan Stanley product JSON. History since launch for ETHA, ETHB, ETHE, ETH and TETH; the others accumulate from the first collection.
+        </p>
+        <p>
+          Valuation metrics: P/E = valuation ÷ revenue, on fully diluted and circulating bases, with revenue either the trailing 30 days annualized (× 365/30) or
+          the trailing 12 months. Revenue is protocol revenue as defined above (totals, including parts); token incentives are not deducted, so this is closer to
+          a price-to-sales ratio than to an equity P/E. Earnings yield is its inverse. Buyback yield uses actual purchases: the Assistance Fund&apos;s HYPE buys
+          (all of Hyperliquid&apos;s revenue) and Lighter&apos;s treasury LIT buys valued at each day&apos;s price. Take rate = revenue ÷ volume in basis points.
+          A dash means the window is not fully covered by data.
         </p>
         <p>
           Deltas compare each window with the preceding window of equal length; YTD compares with the same dates last year. Amounts in USD. The chart window
