@@ -41,6 +41,8 @@ export interface YieldPayment {
 
 export interface HlRevenueStore {
   updatedAt: string;
+  /** Last UTC day held in full: the day before the run that wrote the store started (its own day is in progress). */
+  completeThrough?: Day;
   /** Buyback USD per day from the fund's fills (first-party). */
   days: Record<Day, number>;
   /** One-time history seed for days before the first collection. Never overwrites `days`. */
@@ -119,6 +121,7 @@ export async function yieldPaymentsSince(startDay: Day): Promise<YieldPayment[]>
 }
 
 export async function collectHlRevenue(existing: HlRevenueStore | null, log: (msg: string) => void): Promise<HlRevenueStore> {
+  const startedMs = Date.now();
   const known = Object.keys(existing?.days ?? {}).sort();
   // Re-read the last three stored days (the current one was partial when stored); on the first run,
   // take everything the API still has.
@@ -136,7 +139,7 @@ export async function collectHlRevenue(existing: HlRevenueStore | null, log: (ms
 
   const sorted = Object.keys(days).sort();
   log(`hyperliquid revenue: ${sorted.length} days of buybacks (${sorted[0]} to ${sorted[sorted.length - 1]}), ${yieldPayments.length} reserve-yield payment${yieldPayments.length === 1 ? "" : "s"} on record`);
-  return { updatedAt: new Date().toISOString(), days, seed: existing?.seed, yieldPayments };
+  return { updatedAt: new Date().toISOString(), completeThrough: addDays(dayFromMs(startedMs), -1), days, seed: existing?.seed, yieldPayments };
 }
 
 /**

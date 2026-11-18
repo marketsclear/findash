@@ -1,4 +1,4 @@
-import { addDays, Day, eachDay, todayUtc } from "./days";
+import { addDays, Day, dayFromMs, eachDay, maxDay, minDay, todayUtc } from "./days";
 import { getRefreshState, startRefresh } from "./collect";
 import { DailySeries, makeSeries, sumSeries, Window, windowsEnding, windowStat, WindowStat, WindowKey } from "./metrics";
 import { HlStore, liveHyperliquid24h } from "./sources/hyperliquid";
@@ -193,8 +193,12 @@ function buildValuationMetrics(
 
 export interface DashboardData {
   generatedAt: string;
-  /** Last complete UTC day; every window ends here. */
+  /** Newest UTC day every source holds in full; every window ends here. */
   asOf: Day;
+  /** Newest closed UTC day. `asOf` trails it until a collection has run after that day closed. */
+  latestClosedDay: Day;
+  /** Last day each source holds in full (null = no data yet). */
+  coverage: SourceCoverage;
   windows: Window[];
   exchanges: ExchangeData[];
   /** Lighter relative to Hyperliquid. */
@@ -229,6 +233,44 @@ function block(segments: { name: string; days: Record<Day, number> }[], windows:
         })
       : [];
   return { points, windows: stats, segments, parts };
+}
+
+export interface SourceCoverage {
+  hyperliquidVolume: Day | null;
+  hyperliquidRevenue: Day | null;
+  lighter: Day | null;
+}
+
+/** A source this far behind the calendar no longer holds the page back; its windows then show as partial. */
+const MAX_LAG_DAYS = 3;
+/** Upper bound on a collection run, for stores written before they recorded `completeThrough`. */
+const LEGACY_RUN_MS = 15 * 60_000;
+
+function lastKey(rec: Record<Day, unknown> | undefined): Day | null {
+  let last: Day | null = null;
+  for (const d of Object.keys(rec ?? {})) if (!last || d > last) last = d;
+  return last;
+}
+
+/**
+ * Last UTC day a store holds in full. The Hyperliquid collectors also read the day in progress, so a
+ * day only counts once a collection has started after it closed at 00:00 UTC; Lighter's API publishes
+ * closed days only (`closedDaysOnly`). New stores record this themselves as `completeThrough`.
+ */
+function heldThrough(store: { updatedAt: string; completeThrough?: Day; days: Record<Day, unknown> } | null, closedDaysOnly = false): Day | null {
+  const last = lastKey(store?.days);
+  if (!store || !last) return null;
+  if (store.completeThrough) return minDay(store.completeThrough, last);
+  if (closedDaysOnly) return last;
+  return minDay(last, addDays(dayFromMs(Date.parse(store.updatedAt) - LEGACY_RUN_MS), -1));
+}
+
+/** Drop days a source does not hold in full yet, so an in-progress day is never shown or summed. */
+function upTo(days: Record<Day, number>, through: Day | null): Record<Day, number> {
+  if (!through) return days;
+  const out: Record<Day, number> = {};
+  for (const [day, v] of Object.entries(days)) if (day <= through) out[day] = v;
+  return out;
 }
 
 function pick<T>(days: Record<Day, T> | undefined, key: keyof T): Record<Day, number> {
@@ -306,7 +348,18 @@ export async function getDashboardData(): Promise<DashboardData> {
   }
 
   const today = todayUtc();
-  const asOf = addDays(today, -1);
+  const latestClosedDay = addDays(today, -1);
+  const lighterHeld = heldThrough(lighter, true);
+  const lighterRevenueLast = lastKey(lighter?.revenue);
+  const coverage: SourceCoverage = {
+    hyperliquidVolume: heldThrough(hl),
+    hyperliquidRevenue: heldThrough(hlRev),
+    lighter: lighterHeld && lighterRevenueLast ? minDay(lighterHeld, lighterRevenueLast) : lighterHeld,
+  };
+  // Windows end on the newest day every source holds in full, so all figures cover the same days.
+  const held = Object.values(coverage);
+  const common = held.every((d): d is Day => d !== null) ? [...held].sort()[0] : null;
+  const asOf = common ? maxDay(minDay(common, latestClosedDay), addDays(latestClosedDay, -MAX_LAG_DAYS)) : latestClosedDay;
   const windows = windowsEnding(asOf);
   const chartFrom = "2000-01-01"; // charts get the full daily history; range and window are chosen client-side
 
@@ -330,16 +383,16 @@ export async function getDashboardData(): Promise<DashboardData> {
       name: "Hyperliquid",
       volume: block(
         [
-          { name: "Perps", days: pick(hl?.days, "perps") },
-          { name: "HIP-3 perps", days: pick(hl?.days, "hip3") },
-          { name: "Spot", days: pick(hl?.days, "spot") },
+          { name: "Perps", days: upTo(pick(hl?.days, "perps"), coverage.hyperliquidVolume) },
+          { name: "HIP-3 perps", days: upTo(pick(hl?.days, "hip3"), coverage.hyperliquidVolume) },
+          { name: "Spot", days: upTo(pick(hl?.days, "spot"), coverage.hyperliquidVolume) },
         ],
         windows, asOf, chartFrom,
       ),
       revenue: block(
         [
-          { name: "Trading fees", days: hlRevenue.parts.fees },
-          { name: "Stablecoin reserve yield", days: hlRevenue.parts.yield },
+          { name: "Trading fees", days: upTo(hlRevenue.parts.fees, coverage.hyperliquidRevenue) },
+          { name: "Stablecoin reserve yield", days: upTo(hlRevenue.parts.yield, coverage.hyperliquidRevenue) },
         ],
         windows, asOf, chartFrom,
       ),
@@ -353,19 +406,19 @@ export async function getDashboardData(): Promise<DashboardData> {
       name: "Lighter",
       volume: block(
         [
-          { name: "Perps", days: pick(lighter?.days, "perps") },
-          { name: "Spot", days: pick(lighter?.days, "spot") },
-          { name: "Robinhood", days: pick(lighter?.days, "robinhood") },
+          { name: "Perps", days: upTo(pick(lighter?.days, "perps"), coverage.lighter) },
+          { name: "Spot", days: upTo(pick(lighter?.days, "spot"), coverage.lighter) },
+          { name: "Robinhood", days: upTo(pick(lighter?.days, "robinhood"), coverage.lighter) },
         ],
         windows, asOf, chartFrom,
       ),
       revenue: block(
         lighter?.revenueByDeployment
           ? [
-              { name: "Lighter exchange", days: lighter.revenueByDeployment.main },
-              { name: "Robinhood deployment", days: lighter.revenueByDeployment.robinhood },
+              { name: "Lighter exchange", days: upTo(lighter.revenueByDeployment.main, coverage.lighter) },
+              { name: "Robinhood deployment", days: upTo(lighter.revenueByDeployment.robinhood, coverage.lighter) },
             ]
-          : [{ name: "Revenue", days: lighter?.revenue ?? {} }],
+          : [{ name: "Revenue", days: upTo(lighter?.revenue ?? {}, coverage.lighter) }],
         windows, asOf, chartFrom,
       ),
       live24h: liveLighter
@@ -387,6 +440,8 @@ export async function getDashboardData(): Promise<DashboardData> {
   return {
     generatedAt: new Date().toISOString(),
     asOf,
+    latestClosedDay,
+    coverage,
     windows,
     exchanges,
     ratio,

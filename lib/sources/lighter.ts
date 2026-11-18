@@ -1,5 +1,5 @@
-import { Day, dayFromMs, eachDay } from "../days";
-import { fetchJson, RateLimiter } from "../http";
+import { addDays, Day, DAY_MS, dayFromMs, eachDay } from "../days";
+import { fetchJson, RateLimiter, sleep } from "../http";
 
 /**
  * Lighter volume and revenue from Lighter's own exchange-metrics API, which serves the full daily
@@ -16,6 +16,11 @@ import { fetchJson, RateLimiter } from "../http";
  *    reserve-yield agreement with Circle (Feb 2026) is not included: it is not routed to the protocol
  *    (monthly buybacks equal main-exchange fees within 1%) and its amount is undisclosed.
  * Every run rewrites the whole history, so there is no backfill state to manage.
+ *
+ * The API never serves the day in progress: a day's point appears only after the day has closed.
+ * Observed in the collector logs of Oct-Nov 2026: absent at 22:29 UTC on the day itself, present by
+ * 00:28 UTC the next day (earliest run on record). `completeThrough` records the newest day present in
+ * every volume and fee series, and `awaitClose` lets a run started right after the day change wait for it.
  */
 const DEPLOYMENTS = [
   { id: "main", api: "https://mainnet.zklighter.elliot.ai/api/v1" },
@@ -29,6 +34,8 @@ export type LighterSegment = "perps" | "spot" | "robinhood";
 export type LighterDay = Record<LighterSegment, number>;
 export interface LighterStore {
   updatedAt: string;
+  /** Last UTC day present in every volume and fee series of both deployments (never the day the run started on). */
+  completeThrough?: Day;
   /** 2 = exchange-metrics based (volume + revenue). */
   version: 2;
   spotMarkets: string[];
@@ -88,14 +95,29 @@ function add(into: Record<Day, number>, from: Record<Day, number>) {
   for (const [day, v] of Object.entries(from)) into[day] = (into[day] ?? 0) + v;
 }
 
-export async function collectLighter(_existing: LighterStore | null, log: (msg: string) => void): Promise<LighterStore> {
+function lastDay(rec: Record<Day, unknown>): Day | undefined {
+  let last: Day | undefined;
+  for (const d of Object.keys(rec)) if (!last || d > last) last = d;
+  return last;
+}
+
+async function collectOnce(log: (msg: string) => void): Promise<LighterStore> {
+  const startedMs = Date.now();
   const [main, rh] = DEPLOYMENTS;
+  // Newest day of each volume and fee series, to tell whether the latest closed day is fully published.
+  const published: Day[] = [];
+  const core = async (api: string, kind: string) => {
+    const m = await metric(api, kind);
+    const last = lastDay(m);
+    if (last) published.push(last);
+    return m;
+  };
   await limiter.take();
   const books = (await fetchJson<{ order_books: OrderBook[] }>(`${main.api}/orderBooks`)).order_books;
   const spotMarkets = books.filter((b) => b.market_type === "spot").map((b) => b.symbol).sort();
 
-  const mainVolume = await metric(main.api, "volume");
-  const rhVolume = await metric(rh.api, "volume");
+  const mainVolume = await core(main.api, "volume");
+  const rhVolume = await core(rh.api, "volume");
   const spot: Record<Day, number> = {};
   for (const symbol of spotMarkets) add(spot, await metric(main.api, "volume", symbol));
 
@@ -104,7 +126,7 @@ export async function collectLighter(_existing: LighterStore | null, log: (msg: 
   const liquidationFees: Record<Day, number> = {};
   for (const d of DEPLOYMENTS) {
     for (const kind of REVENUE_KINDS) {
-      const m = await metric(d.api, kind);
+      const m = await core(d.api, kind);
       add(revenue, m);
       add(revenueByDeployment[d.id], m);
     }
@@ -136,8 +158,42 @@ export async function collectLighter(_existing: LighterStore | null, log: (msg: 
     days[day] = { perps: total - s, spot: s, robinhood: rhVolume[day] ?? 0 };
   }
   const sorted = Object.keys(days).sort();
-  log(`lighter: ${sorted.length} days (${sorted[0]} to ${sorted[sorted.length - 1]}), ${spotMarkets.length} spot markets, revenue ${Object.keys(revenue).length} days, buybacks ${bbDays.length} days`);
-  return { updatedAt: new Date().toISOString(), version: 2, spotMarkets, days, revenue, revenueByDeployment, liquidationFees, buybacks };
+  const completeThrough = published.length ? [...published, addDays(dayFromMs(startedMs), -1)].sort()[0] : undefined;
+  log(`lighter: ${sorted.length} days (${sorted[0]} to ${sorted[sorted.length - 1]}), complete through ${completeThrough ?? "?"}, ${spotMarkets.length} spot markets, revenue ${Object.keys(revenue).length} days, buybacks ${bbDays.length} days`);
+  return { updatedAt: new Date().toISOString(), completeThrough, version: 2, spotMarkets, days, revenue, revenueByDeployment, liquidationFees, buybacks };
+}
+
+/** `awaitClose` only applies this long after 00:00 UTC; later runs take whatever is published. */
+const AWAIT_CLOSE_WINDOW_MS = 75 * 60_000;
+const AWAIT_CLOSE_RETRY_MS = 60_000;
+
+/** True while the UTC day that just closed is still missing from Lighter's API and it is early enough to wait for it. */
+export function shouldAwaitClose(nowMs: number, publishedThrough: Day | undefined): boolean {
+  if (nowMs % DAY_MS > AWAIT_CLOSE_WINDOW_MS) return false;
+  return !publishedThrough || publishedThrough < addDays(dayFromMs(nowMs), -1);
+}
+
+/**
+ * Collect the full Lighter history. With `awaitClose`, a run started shortly after 00:00 UTC polls once a
+ * minute until Lighter has published the day that just closed (at most until 01:15 UTC), so the scheduled
+ * post-midnight run always stores that day. At any other time of day the option does nothing.
+ */
+export async function collectLighter(_existing: LighterStore | null, log: (msg: string) => void, opts: { awaitClose?: boolean } = {}): Promise<LighterStore> {
+  for (;;) {
+    if (opts.awaitClose) {
+      // One request instead of a full pass while nothing is out yet.
+      const probe = lastDay(await metric(DEPLOYMENTS[0].api, "volume"));
+      if (shouldAwaitClose(Date.now(), probe)) {
+        log(`lighter: ${addDays(dayFromMs(Date.now()), -1)} not published yet (latest ${probe ?? "none"}); checking again in 60s`);
+        await sleep(AWAIT_CLOSE_RETRY_MS);
+        continue;
+      }
+    }
+    const store = await collectOnce(log);
+    if (!opts.awaitClose || !shouldAwaitClose(Date.now(), store.completeThrough)) return store;
+    log(`lighter: ${addDays(dayFromMs(Date.now()), -1)} only partly published (complete through ${store.completeThrough}); collecting again in 60s`);
+    await sleep(AWAIT_CLOSE_RETRY_MS);
+  }
 }
 
 /** Rolling 24h USD volume as reported by each deployment's exchangeStats. */

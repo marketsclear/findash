@@ -24,6 +24,11 @@ export type HlSegment = "perps" | "hip3" | "spot";
 export type HlDay = Record<HlSegment, number>;
 export interface HlStore {
   updatedAt: string;
+  /**
+   * Last UTC day held in full: the day before the run that wrote the store started. Candles are read up
+   * to the start time, so the start day itself is in progress and is replaced by a later run.
+   */
+  completeThrough?: Day;
   version?: 2;
   markets: number;
   days: Record<Day, HlDay>;
@@ -133,7 +138,7 @@ export async function collectHyperliquid(existing: HlStore | null, log: (msg: st
   for (const [day, row] of Object.entries(existing?.days ?? {})) days[day] = { ...blank, ...(row as Partial<HlDay>) };
   for (const [day, row] of Object.entries(fresh)) days[day] = { ...blank, ...(days[day] as Partial<HlDay> | undefined), ...row };
   log(`hyperliquid: done, ${Object.keys(days).length} days`);
-  return { updatedAt: new Date().toISOString(), version: 2, markets: all.length, days };
+  return { updatedAt: new Date().toISOString(), completeThrough: addDays(dayFromMs(now), -1), version: 2, markets: all.length, days };
 }
 
 /** Rolling 24h notional as reported by the exchange itself, by segment. */

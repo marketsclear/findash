@@ -5,6 +5,7 @@ import { RatioCard } from "@/components/RatioCard";
 import { ValuationMetrics } from "@/components/ValuationMetrics";
 import { RefreshButton } from "@/components/RefreshButton";
 import { getDashboardData } from "@/lib/dashboard";
+import { addDays } from "@/lib/days";
 import { fmtCompact, fmtDay, fmtPct, fmtRange, fmtShare, fmtTime, fmtUsd } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +15,12 @@ const COLORS: Record<string, string> = { hyperliquid: "var(--series-1)", lighter
 export default async function Page() {
   const data = await getDashboardData();
   const oldest = data.exchanges.map((e) => e.updatedAt).filter(Boolean).sort()[0] ?? null;
+  // Closed UTC days that no collection has covered yet; the windows stop before them.
+  const pending = data.hasData && data.asOf < data.latestClosedDay;
+  const firstPending = addDays(data.asOf, 1);
+  const onePending = firstPending === data.latestClosedDay;
+  const pendingLabel = onePending ? fmtDay(firstPending) : `${fmtDay(firstPending)} to ${fmtDay(data.latestClosedDay)}`;
+  const held = (day: string | null) => (day ? fmtDay(day) : "no data");
 
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
@@ -21,7 +28,8 @@ export default async function Page() {
         <div>
           <h1 className="text-xl font-semibold">Perp DEX monitor</h1>
           <p className="mt-1 text-sm text-ink-2">
-            Hyperliquid and Lighter · volume and revenue · windows end {fmtDay(data.asOf, { year: true })} (last complete UTC day)
+            Hyperliquid and Lighter · volume and revenue · windows end {fmtDay(data.asOf, { year: true })}{" "}
+            {pending ? `· ${pendingLabel} not collected yet` : "(last complete UTC day)"}
           </p>
         </div>
         <div className="flex flex-col items-end gap-1">
@@ -33,6 +41,17 @@ export default async function Page() {
           <span className="text-xs text-muted">Data updated {fmtTime(oldest)}</span>
         </div>
       </header>
+
+      {pending && (
+        <p role="status" className="mb-6 rounded-md border border-border bg-surface px-4 py-3 text-sm text-ink-2">
+          <span className="font-medium text-ink">
+            {pendingLabel} {onePending ? "is" : "are"} not in yet.
+          </span>{" "}
+          A day is added once a collection has run after it closed at 00:00 UTC, so every figure below covers the same complete days. Complete through: Hyperliquid
+          volume {held(data.coverage.hyperliquidVolume)} · Hyperliquid revenue {held(data.coverage.hyperliquidRevenue)} · Lighter {held(data.coverage.lighter)}. Last
+          collection {fmtTime(oldest)}.
+        </p>
+      )}
 
       {!data.hasData && (
         <p className="mb-6 rounded-md border border-border bg-surface px-4 py-3 text-sm text-ink-2">
@@ -174,7 +193,9 @@ export default async function Page() {
           A dash means the window is not fully covered by data.
         </p>
         <p>
-          Deltas compare each window with the preceding window of equal length; YTD compares with the same dates last year. Amounts in USD. The chart window
+          Windows end on the newest UTC day that every source holds in full. The collectors also read the day in progress, so a day is only shown once a
+          collection has run after it closed at 00:00 UTC; a run is started within the hour after each day change. Deltas compare each window with the preceding
+          window of equal length; YTD compares with the same dates last year. Amounts in USD. The chart window
           control shows the same windows over time: Weekly, Monthly and Yearly plot the total of the 7, 30 or 365 days ending on each day (only where the whole
           window has data), YTD the total since 1 January, so the last point of a chart equals the card figure.
         </p>

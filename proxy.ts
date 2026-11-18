@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { passwordRequired, SESSION_COOKIE, validSession } from "@/lib/session";
 
-const PUBLIC_PATHS = ["/login", "/api/login"];
+// /api/cron/* is called by Vercel Cron without a session; those routes check CRON_SECRET themselves.
+const PUBLIC_PATHS = ["/login", "/api/login", "/api/cron/"];
 
 export default function proxy(req: NextRequest) {
   if (!passwordRequired()) return NextResponse.next();

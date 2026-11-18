@@ -1,8 +1,12 @@
 name: Collect market data
 
+# The run that matters is the first one after 00:00 UTC: it closes the previous day, and the page only
+# shows a day once a collection has run after it closed. GitHub starts scheduled workflows hours late and
+# drops most of them (this one ran every 6-12 hours in Nov 2026 instead of every 2), so that run is
+# dispatched by Vercel Cron through /api/cron/collect (see vercel.json). The schedule stays as a fallback.
 on:
   schedule:
-    - cron: "23 */2 * * *" # every 2 hours; each run takes ~8 minutes because of exchange rate limits
+    - cron: "23 */2 * * *" # every 2 hours on paper; each run takes ~9 minutes because of exchange rate limits
   workflow_dispatch:
 
 concurrency:
@@ -32,6 +36,7 @@ jobs:
       - if: steps.check.outputs.skip != 'true'
         run: pnpm install --frozen-lockfile
       - if: steps.check.outputs.skip != 'true'
-        run: pnpm collect
+        # --await-close: just after 00:00 UTC, wait for Lighter to publish the day that closed.
+        run: pnpm collect dex --await-close
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}

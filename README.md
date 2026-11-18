@@ -75,9 +75,18 @@ because one refresh takes ~8 minutes (exchange rate limits) - far longer than a 
 1. **Neon**: create a database and copy its connection string.
 2. **Seed it from the local cache** so the first deploy has history: `DATABASE_URL=... pnpm store:push`.
 3. **GitHub**: add `DATABASE_URL` as a repository secret. `.github/workflows/collect.yml` then runs
-   `pnpm collect` every 2 hours (and on demand from the Actions tab).
+   `pnpm collect` on a 2-hour schedule (and on demand from the Actions tab).
 4. **Vercel**: import the repo and set the environment variables
    `DATABASE_URL`, `FINDASH_REFRESH=external`, and optionally `DASHBOARD_PASSWORD`.
+
+5. **Daily trigger**: GitHub starts scheduled workflows hours late and drops most of them (the 2-hour
+   schedule ran every 6-12 hours in Nov 2026), and the page only shows a day once a collection has run
+   after it closed. So `vercel.json` defines two Vercel cron jobs (00:00 and 03:00 UTC; on the Hobby
+   plan each fires at some point within its hour) that call `/api/cron/collect`, which starts the
+   workflow through GitHub's API. On Vercel set `CRON_SECRET` (a random string; Vercel sends it as a
+   bearer token) and `GITHUB_DISPATCH_TOKEN` (a fine-grained personal access token for this repository
+   with "Actions: read and write"), then redeploy. Without them the route answers 503 and only
+   GitHub's own schedule runs.
 
 Environment variables are listed in `.env.example`. With `DASHBOARD_PASSWORD` set, every page and API
 route redirects to `/login` until the password has been entered once (90-day cookie).
@@ -134,7 +143,11 @@ change in percentage points), as a daily share chart, and as a headline figure f
 
 ## Windows
 
-All windows end on the last complete UTC day. Daily = that day; Weekly = last 7 days; Monthly = last
+All windows end on the newest UTC day that every source holds in full. The Hyperliquid collectors
+read the day in progress too, and Lighter publishes a day only after it has closed, so each store
+records `completeThrough` (the last day it holds in full: a day counts once a collection has started
+after it closed at 00:00 UTC). The page ends its windows on the earliest of the three (at most three
+days behind the calendar), cuts every series there, and says which day is still missing. Daily = that day; Weekly = last 7 days; Monthly = last
 30 days; YTD = 1 Jan through that day; Yearly = last 365 days. Deltas compare with the preceding
 window of equal length (YTD: same dates last year) and are only shown when both windows are fully
 covered by data.

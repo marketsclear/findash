@@ -25,8 +25,11 @@ export function getRefreshState(): RefreshState {
   return slot.state;
 }
 
-/** Refresh every collector. Concurrent callers share the in-flight run. */
-export function startRefresh(logger: (msg: string) => void = () => {}, scope: "dex" | "etf" | "all" = "dex"): Promise<void> {
+/**
+ * Refresh every collector. Concurrent callers share the in-flight run. `awaitClose`: when started just
+ * after 00:00 UTC, wait for Lighter to publish the day that closed (see collectLighter).
+ */
+export function startRefresh(logger: (msg: string) => void = () => {}, scope: "dex" | "etf" | "all" = "dex", opts: { awaitClose?: boolean } = {}): Promise<void> {
   if (slot.promise) return slot.promise;
   const state = slot.state;
   state.running = true;
@@ -44,7 +47,7 @@ export function startRefresh(logger: (msg: string) => void = () => {}, scope: "d
     if (scope !== "etf") {
       jobs.push(
         readStore<HlStore>("hyperliquid").then((prev) => collectHyperliquid(prev, log)).then((s) => writeStore("hyperliquid", s)),
-        readStore<LighterStore>("lighter").then((prev) => collectLighter(prev, log)).then((s) => writeStore("lighter", s)),
+        readStore<LighterStore>("lighter").then((prev) => collectLighter(prev, log, opts)).then((s) => writeStore("lighter", s)),
         readStore<HlRevenueStore>("hl-revenue").then((prev) => collectHlRevenue(prev, log)).then((s) => writeStore("hl-revenue", s)),
         collectSupply(log).then((s) => writeStore("supply", s)),
       );
